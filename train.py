@@ -84,7 +84,9 @@ def run(rank, n_gpus, hps):
   # 设置当前使用的 GPU 设备，将当前进程绑定到 rank 对应的 GPU 设备上
   torch.cuda.set_device(rank)
 
+  # 从音频和文本文件中加载数据
   train_dataset = TextAudioLoader(hps.data.training_files, hps.data)
+  # 对数据进行采样
   train_sampler = DistributedBucketSampler(
     train_dataset,
     hps.train.batch_size,
