@@ -193,22 +193,34 @@ def get_hparams_from_file(config_path):
 
 
 def check_git_hash(model_dir):
+  """
+  :param model_dir: 模型文件存储的路径
+  :return:
+  """
+
+  # 获取当前脚本文件的绝对路径
+  # 获取当前脚本文件所在目录的路径
   source_dir = os.path.dirname(os.path.realpath(__file__))
+  # 判断源代码所在目录是否为 git 仓库
   if not os.path.exists(os.path.join(source_dir, ".git")):
     logger.warn("{} is not a git repository, therefore hash value comparison will be ignored.".format(
       source_dir
     ))
     return
 
+  # 获取当前代码仓库的 HEAD 值
   cur_hash = subprocess.getoutput("git rev-parse HEAD")
 
   path = os.path.join(model_dir, "githash")
+  #  githash 文件
   if os.path.exists(path):
     saved_hash = open(path).read()
+    # 将文件中保存的版本号与当前版本号进行比较
     if saved_hash != cur_hash:
       logger.warn("git hash values are different. {}(saved) != {}(current)".format(
         saved_hash[:8], cur_hash[:8]))
   else:
+    # 新建一个文件并保存当前版本号
     open(path, "w").write(cur_hash)
 
 

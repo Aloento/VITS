@@ -52,16 +52,36 @@ def main():
 
 
 def run(rank, n_gpus, hps):
+  """
+  :param rank: 当前进程的 ID
+  :param n_gpus: 可用的 GPU 数量
+  :param hps: 配置
+  """
+
+  # 记录模型训练的步数
   global global_step
+
   if rank == 0:
+    # 日志记录器
     logger = utils.get_logger(hps.model_dir)
+    # 输出配置
     logger.info(hps)
+
+    # 检查代码仓库的版本信息是否与当前运行的代码一致
     utils.check_git_hash(hps.model_dir)
+    # 记录训练日志
     writer = SummaryWriter(log_dir=hps.model_dir)
+    # 评估日志
     writer_eval = SummaryWriter(log_dir=os.path.join(hps.model_dir, "eval"))
 
+  # 初始化进程组
+  # backend: 使用 NVIDIA 提供的通信库 NCCL 进行通信
+  # init_method: 使用环境变量的方式初始化进程组
+  # world_size: 进程组的总数
   dist.init_process_group(backend='nccl', init_method='env://', world_size=n_gpus, rank=rank)
+  # 设置随机数种子，使得每次运行代码时生成的随机数序列相同
   torch.manual_seed(hps.train.seed)
+  # 设置当前使用的 GPU 设备，将当前进程绑定到 rank 对应的 GPU 设备上
   torch.cuda.set_device(rank)
 
   train_dataset = TextAudioLoader(hps.data.training_files, hps.data)
