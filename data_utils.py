@@ -12,9 +12,9 @@ from utils import load_wav_to_torch, load_filepaths_and_text
 
 class TextAudioLoader(torch.utils.data.Dataset):
   """
-  1) loads audio, text pairs
-  2) normalizes text and converts them to sequences of integers
-  3) computes spectrograms from audio files.
+  1) loads audio, text pairs 加载音频和文本对
+  2) normalizes text and converts them to sequences of integers 对文本进行规范化并将其转换为整数序列
+  3) computes spectrogram's from audio files. 从音频文件计算出其对应的声谱图
   """
 
   def __init__(self, audiopaths_and_text, hparams):
@@ -34,12 +34,15 @@ class TextAudioLoader(torch.utils.data.Dataset):
     self.max_text_len = getattr(hparams, "max_text_len", 190)
 
     random.seed(1234)
+    # 随机打乱
     random.shuffle(self.audiopaths_and_text)
+    # 将不符合文本长度要求的音频和文本对剔除
     self._filter()
 
   def _filter(self):
     """
     Filter text & store spec lengths
+    筛选输入数据的音频和文本信息，并为后续分桶操作存储音频的长度
     """
     # Store spectrogram lengths for Bucketing
     # wav_length ~= file_size / (wav_channels * Bytes per dim) = file_size / (1 * 2)
@@ -47,45 +50,64 @@ class TextAudioLoader(torch.utils.data.Dataset):
 
     audiopaths_and_text_new = []
     lengths = []
+    # 遍历输入数据中的每个音频文件和对应的文本信息
     for audiopath, text in self.audiopaths_and_text:
-      if self.min_text_len <= len(text) and len(text) <= self.max_text_len:
+      # 判断文本长度是否在给定范围内
+      if self.min_text_len <= len(text) <= self.max_text_len:
+        # 将这个音频和文本对加入一个新的列表，并计算该音频对应的长度（单位是以采样点数为基础的帧数）
         audiopaths_and_text_new.append([audiopath, text])
         lengths.append(os.path.getsize(audiopath) // (2 * self.hop_length))
+
     self.audiopaths_and_text = audiopaths_and_text_new
     self.lengths = lengths
 
   def get_audio_text_pair(self, audiopath_and_text):
-    # separate filename and text
+    # separate filename and text 分离出音频文件路径和文本
     audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
     text = self.get_text(text)
     spec, wav = self.get_audio(audiopath)
-    return (text, spec, wav)
+    return text, spec, wav
 
   def get_audio(self, filename):
+    # 加载音频文件，并获取音频的采样率
     audio, sampling_rate = load_wav_to_torch(filename)
+
+    # 检查采样率是否与目标采样率相同
     if sampling_rate != self.sampling_rate:
       raise ValueError("{} SR doesn't match target {} SR".format(
         sampling_rate, self.sampling_rate))
+
+    # 将音频归一化，将音频值除以最大音频值，以使所有音频值在[-1, 1]之间
     audio_norm = audio / self.max_wav_value
     audio_norm = audio_norm.unsqueeze(0)
+
+    # 频谱文件
     spec_filename = filename.replace(".wav", ".spec.pt")
     if os.path.exists(spec_filename):
+      # 从该文件中加载频谱数据
       spec = torch.load(spec_filename)
     else:
+      # 计算音频的频谱
       spec = spectrogram_torch(audio_norm, self.filter_length,
                                self.sampling_rate, self.hop_length, self.win_length,
                                center=False)
+      # 将添加的维度压缩掉
       spec = torch.squeeze(spec, 0)
       torch.save(spec, spec_filename)
+    # 频谱数据和归一化后的音频数据
     return spec, audio_norm
 
   def get_text(self, text):
+    # 将文本转换为数字序列，每个字符都映射到一个唯一的整数
     if self.cleaned_text:
       text_norm = cleaned_text_to_sequence(text)
     else:
       text_norm = text_to_sequence(text, self.text_cleaners)
+
+    # 空白符通常用于标记单词之间的空格
     if self.add_blank:
       text_norm = commons.intersperse(text_norm, 0)
+
     text_norm = torch.LongTensor(text_norm)
     return text_norm
 

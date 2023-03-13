@@ -132,6 +132,10 @@ def plot_alignment_to_numpy(alignment, info=None):
 
 
 def load_wav_to_torch(full_path):
+  """
+  使用read方法从音频文件中读取采样率和音频数据，并将数据类型转换为float32类型。
+  然后，使用torch.FloatTensor方法将数据转换为PyTorch的FloatTensor类型，并返回数据和采样率。
+  """
   sampling_rate, data = read(full_path)
   return torch.FloatTensor(data.astype(np.float32)), sampling_rate
 
