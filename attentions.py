@@ -159,6 +159,18 @@ class Decoder(nn.Module):
 
 class MultiHeadAttention(nn.Module):
   def __init__(self, channels, out_channels, n_heads, p_dropout=0., window_size=None, heads_share=True, block_length=None, proximal_bias=False, proximal_init=False):
+    """
+    :param channels: 输入的通道数
+    :param out_channels: 输出的通道数
+    :param n_heads: 多头注意力机制中的头数
+    :param p_dropout: dropout 概率
+    :param window_size: 局部注意力机制中的窗口大小
+    :param heads_share: 是否共享多头注意力机制中的参数
+    :param block_length: 局部注意力机制中的块长度
+    :param proximal_bias: 是否使用位置偏置
+    :param proximal_init: 位置偏置的初始值
+    """
+
     super().__init__()
     assert channels % n_heads == 0
 
@@ -173,21 +185,36 @@ class MultiHeadAttention(nn.Module):
     self.proximal_init = proximal_init
     self.attn = None
 
+    # 将输入的通道数除以头的数量，得到每个头应该有的通道数。
     self.k_channels = channels // n_heads
     self.conv_q = nn.Conv1d(channels, channels, 1)
     self.conv_k = nn.Conv1d(channels, channels, 1)
     self.conv_v = nn.Conv1d(channels, channels, 1)
     self.conv_o = nn.Conv1d(channels, out_channels, 1)
+    # 在模型训练时随机将一些神经元的输出设置为零，以防止过拟合
     self.drop = nn.Dropout(p_dropout)
 
+    # 如果指定了窗口大小
     if window_size is not None:
+      # 如果 heads_share 为 True，则所有头将共享相同的相对位置嵌入；
+      # 否则，每个头都会有自己的相对位置嵌入。
+      # n_heads_rel 变量表示头的数量。
       n_heads_rel = 1 if heads_share else n_heads
+      # 计算相对位置嵌入的标准差，它取决于头的数量和通道数。
       rel_stddev = self.k_channels ** -0.5
+      # 创建一个形状为 (n_heads_rel, window_size * 2 + 1, self.k_channels) 的张量，
+      # 表示相对位置嵌入的键（key）的权重。
+      # 张量的值是从均值为零、标准差为 rel_stddev 的正态分布中随机生成的。
+      # nn.Parameter 用于将张量标记为模型的参数，以便在模型训练过程中进行优化。
       self.emb_rel_k = nn.Parameter(torch.randn(n_heads_rel, window_size * 2 + 1, self.k_channels) * rel_stddev)
+      # 值（value）的权重
       self.emb_rel_v = nn.Parameter(torch.randn(n_heads_rel, window_size * 2 + 1, self.k_channels) * rel_stddev)
 
+    # 使用 Xavier 均匀初始化方法初始化权重
     nn.init.xavier_uniform_(self.conv_q.weight)
+    # 这种初始化方法会将权重值从一个均匀分布中随机采样
     nn.init.xavier_uniform_(self.conv_k.weight)
+    # 使其在前向传播和反向传播过程中保持方差不变
     nn.init.xavier_uniform_(self.conv_v.weight)
 
     if proximal_init:
