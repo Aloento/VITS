@@ -441,19 +441,31 @@ class DistributedBucketSampler(torch.utils.data.distributed.DistributedSampler):
     return iter(self.batches)
 
   def _bisect(self, x, lo=0, hi=None):
+    """
+    二分查找算法来查找一个数字在已排序的列表中的位置
+    :param x: 要查找的数字
+    :param lo:
+    :param hi: 搜索范围的右端点
+    :return:
+    """
     if hi is None:
       hi = len(self.boundaries) - 1
 
     if hi > lo:
+      # 中间位置的索引
       mid = (hi + lo) // 2
-      if self.boundaries[mid] < x and x <= self.boundaries[mid + 1]:
+      if self.boundaries[mid] < x <= self.boundaries[mid + 1]:
         return mid
       elif x <= self.boundaries[mid]:
+        # 在搜索范围的左半部分递归
         return self._bisect(x, lo, mid)
       else:
+        # 在搜索范围的右半部分递归
         return self._bisect(x, mid + 1, hi)
     else:
       return -1
 
   def __len__(self):
+    # 数据集的长度为多少个batch
+    # 如果 num_samples 是 1000，batch_size 是 64，那么将返回 15，表示数据集可以分成 15 个大小为 64 的批次，以处理所有的 1000 个样本
     return self.num_samples // self.batch_size
