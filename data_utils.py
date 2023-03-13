@@ -89,7 +89,7 @@ class TextAudioLoader(torch.utils.data.Dataset):
     else:
       # 计算音频的频谱
       spec = spectrogram_torch(audio_norm, self.filter_length,
-                               self.sampling_rate, self.hop_length, self.win_length,
+                               self.hop_length, self.win_length,
                                center=False)
       # 将添加的维度压缩掉
       spec = torch.squeeze(spec, 0)
@@ -261,7 +261,7 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
       spec = torch.load(spec_filename)
     else:
       spec = spectrogram_torch(audio_norm, self.filter_length,
-                               self.sampling_rate, self.hop_length, self.win_length,
+                               self.hop_length, self.win_length,
                                center=False)
       spec = torch.squeeze(spec, 0)
       torch.save(spec, spec_filename)
