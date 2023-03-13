@@ -63,7 +63,6 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
   # 汉宁窗口是一种对称的、具有平滑过渡的窗口，形状类似于一个向两端逐渐变细的钟形曲线，
   # 可以抑制信号频谱中的泄漏现象，使信号在傅里叶变换后的频谱图中更加清晰。
   global hann_window
-
   dtype_device = str(y.dtype) + '_' + str(y.device)
   wnsize_dtype_device = str(win_size) + '_' + dtype_device
 
@@ -99,14 +98,32 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
 
 
 def spec_to_mel_torch(spec, n_fft, num_mels, sampling_rate, fmin, fmax):
+  """
+  将频谱图（spectrogram）转换为梅尔频谱图（Mel spectrogram）
+  :param spec: 频谱图
+  :param n_fft: FFT大小
+  :param num_mels: Mel滤波器个数
+  :param sampling_rate: 采样率
+  :param fmin: 最低频率
+  :param fmax: 最高频率
+  """
+
+  # mel-basis 矩阵是一个对数滤波器组，对输入信号进行频域分解
   global mel_basis
   dtype_device = str(spec.dtype) + '_' + str(spec.device)
   fmax_dtype_device = str(fmax) + '_' + dtype_device
+
+  # 判断当前的数据类型和设备是否已经在mel_basis中存在对应的梅尔滤波器
   if fmax_dtype_device not in mel_basis:
+    # 使用 librosa 库将线性频谱转换为梅尔频谱，返回一个梅尔滤波器组成的矩阵
     mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
     mel_basis[fmax_dtype_device] = torch.from_numpy(mel).to(dtype=spec.dtype, device=spec.device)
+
+  # 将输入的 spectrogram 与 mel-basis 矩阵相乘，得到 mel-spectrogram
   spec = torch.matmul(mel_basis[fmax_dtype_device], spec)
+  # 对 mel-spectrogram 进行幅度谱的归一化，使得所有的幅度值都在 [0, 1] 范围内。这有助于神经网络训练过程的稳定性和收敛速度
   spec = spectral_normalize_torch(spec)
+
   return spec
 
 
