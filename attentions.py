@@ -83,6 +83,18 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
   def __init__(self, hidden_channels, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0., proximal_bias=False, proximal_init=True, **kwargs):
+    """
+    :param hidden_channels: 隐藏层通道数
+    :param filter_channels: 前馈神经网络中卷积层的输出通道数
+    :param n_heads: 注意力机制中的头数
+    :param n_layers: 解码器中的层数
+    :param kernel_size: 前馈神经网络中卷积层的核大小
+    :param p_dropout: Dropout 概率
+    :param proximal_bias: 是否使用“邻近偏置”
+    :param proximal_init: 是否使用“邻近初始化”
+    :param kwargs: 其他可选参数
+    """
+
     super().__init__()
     self.hidden_channels = hidden_channels
     self.filter_channels = filter_channels
@@ -101,6 +113,7 @@ class Decoder(nn.Module):
     self.ffn_layers = nn.ModuleList()
     self.norm_layers_2 = nn.ModuleList()
 
+    # 对每一层进行实例化
     for i in range(self.n_layers):
       self.self_attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, proximal_bias=proximal_bias, proximal_init=proximal_init))
       self.norm_layers_0.append(LayerNorm(hidden_channels))
@@ -114,19 +127,28 @@ class Decoder(nn.Module):
     x: decoder input
     h: encoder output
     """
+
+    # 生成解码器自注意力层的掩码，采用子序列掩码，将对角线及其右侧的位置设为 0，其余位置设为 1。
     self_attn_mask = commons.subsequent_mask(x_mask.size(2)).to(device=x.device, dtype=x.dtype)
+    # 生成解码器和编码器之间注意力层的掩码，采用编码器输出和解码器输入的掩码相乘得到，用于过滤掉不需要的信息。
     encdec_attn_mask = h_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+    # 过滤掉不需要的信息。
     x = x * x_mask
 
     for i in range(self.n_layers):
+      # 使用解码器自注意力层计算解码器输入 x 的注意力表示
       y = self.self_attn_layers[i](x, x, self_attn_mask)
+      # 应用 dropout
       y = self.drop(y)
+      # 归一化
       x = self.norm_layers_0[i](x + y)
 
+      # 使用解码器和编码器之间的注意力层计算编码器输出 h 的注意力表示。
       y = self.encdec_attn_layers[i](x, h, encdec_attn_mask)
       y = self.drop(y)
       x = self.norm_layers_1[i](x + y)
 
+      # 使用前馈神经网络计算解码器输入 x 的新表示。
       y = self.ffn_layers[i](x, x_mask)
       y = self.drop(y)
       x = self.norm_layers_2[i](x + y)
