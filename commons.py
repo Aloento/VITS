@@ -118,8 +118,19 @@ def shift_1d(x):
 
 
 def sequence_mask(length, max_length=None):
+  """
+  生成一个二维的布尔掩码
+  这个掩码是用来屏蔽输入中填充的位置的。在自然语言处理中，经常需要对变长的文本序列进行处理，
+  因为不同的句子长度可能不同，需要对其进行填充，使得所有句子都具有相同的长度。
+  但是，由于填充的位置是没有实际意义的，所以在进行模型计算时需要将填充位置的信息屏蔽掉。这就是这个掩码的作用。
+  """
+
   if max_length is None:
     max_length = length.max()
+
+  # 生成一个从 0 到 max_length-1 的序列 x，然后将其重复 batch_size 次，形状变为 (batch_size, max_length)。
+  # 接下来，将 length 扩展为形状为 (batch_size, 1) 的张量，并将其与 x 逐元素比较，
+  # 生成一个布尔型张量，表示所有小于 length 中对应元素的位置为 True，否则为 False。
   x = torch.arange(max_length, dtype=length.dtype, device=length.device)
   return x.unsqueeze(0) < length.unsqueeze(1)
 
