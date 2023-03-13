@@ -94,10 +94,20 @@ def run(rank, n_gpus, hps):
     num_replicas=n_gpus,
     rank=rank,
     shuffle=True)
+
   collate_fn = TextAudioCollate()
+  # train_dataset：表示要加载的训练数据集。
+  # num_workers=8：表示使用 8 个进程来读取数据集。
+  # shuffle=False：表示不对数据进行打乱。
+  # pin_memory=True：表示将数据加载到 GPU 内存中，可以提高训练速度。
+  # collate_fn=collate_fn：表示用于将数据集中的样本组合成一个 batch 的函数，这里采用了自定义的 TextAudioCollate 函数。
+  # batch_sampler=train_sampler：表示使用自定义的 DistributedBucketSampler 对 batch 进行采样。
   train_loader = DataLoader(train_dataset, num_workers=8, shuffle=False, pin_memory=True,
                             collate_fn=collate_fn, batch_sampler=train_sampler)
+
   if rank == 0:
+    # 加载验证数据
+    # 不会丢弃最后一个 batch
     eval_dataset = TextAudioLoader(hps.data.validation_files, hps.data)
     eval_loader = DataLoader(eval_dataset, num_workers=8, shuffle=False,
                              batch_size=hps.train.batch_size, pin_memory=True,
@@ -108,17 +118,21 @@ def run(rank, n_gpus, hps):
     hps.data.filter_length // 2 + 1,
     hps.train.segment_size // hps.data.hop_length,
     **hps.model).cuda(rank)
+
   net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm).cuda(rank)
+
   optim_g = torch.optim.AdamW(
     net_g.parameters(),
     hps.train.learning_rate,
     betas=hps.train.betas,
     eps=hps.train.eps)
+
   optim_d = torch.optim.AdamW(
     net_d.parameters(),
     hps.train.learning_rate,
     betas=hps.train.betas,
     eps=hps.train.eps)
+
   net_g = DDP(net_g, device_ids=[rank])
   net_d = DDP(net_d, device_ids=[rank])
 

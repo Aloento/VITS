@@ -1,5 +1,4 @@
 import math
-import math
 
 import torch
 from torch import nn
@@ -142,6 +141,19 @@ class TextEncoder(nn.Module):
                n_layers,
                kernel_size,
                p_dropout):
+    """
+    将文本序列中的每个单词转换为向量
+
+    :param n_vocab: 输入词表大小
+    :param out_channels: 输出通道数
+    :param hidden_channels: 隐藏通道数
+    :param filter_channels: 卷积层的滤波器通道数
+    :param n_heads: 注意力头数
+    :param n_layers: 编码器层数
+    :param kernel_size: 卷积核大小
+    :param p_dropout: Dropout 概率
+    """
+
     super().__init__()
     self.n_vocab = n_vocab
     self.out_channels = out_channels
@@ -152,9 +164,14 @@ class TextEncoder(nn.Module):
     self.kernel_size = kernel_size
     self.p_dropout = p_dropout
 
+    # 我们定义了三个神经网络层
+    # nn.Embedding 是一个用于将整数编码转换为密集向量表示的层
+    # 将输入的离散标记编码成一个隐藏向量表示
     self.emb = nn.Embedding(n_vocab, hidden_channels)
+    # 对权重进行初始化，使用正态分布随机初始化权重，均值为0，方差为 hidden_channels ** (幂运算) -0.5。
     nn.init.normal_(self.emb.weight, 0.0, hidden_channels ** -0.5)
 
+    # 多头自注意力机制编码器层
     self.encoder = attentions.Encoder(
       hidden_channels,
       filter_channels,
@@ -162,16 +179,35 @@ class TextEncoder(nn.Module):
       n_layers,
       kernel_size,
       p_dropout)
+
+    # 一维卷积层，hidden_channels 是输入通道数，1 是卷积核的大小
     self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
   def forward(self, x, x_lengths):
+    # 首先对输入 x 进行词嵌入 (self.emb(x))，将单词转换为向量。
+    # 然后将其乘以 $\sqrt{hidden_channels}$ 归一化词嵌入向量
     x = self.emb(x) * math.sqrt(self.hidden_channels)  # [b, t, h]
+
+    # 对 x 进行转置，以适应下面 Encoder 层的输入形状
+    # 将维度顺序从 (batch_size, sequence_length, hidden_channels)
+    #       转为 (batch_size, hidden_channels, sequence_length)。
     x = torch.transpose(x, 1, -1)  # [b, h, t]
+
+    # 根据输入 x_lengths 构造掩码矩阵 x_mask，
+    # 用于将填充的位置的注意力权重设置为0，避免填充对注意力计算产生影响
+    # 形状为 (batch_size, 1, sequence_length)
     x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
 
+    # 对序列进行多头自注意力编码，进行特征提取（残差连接）
     x = self.encoder(x * x_mask, x_mask)
+
+    # 将编码后的序列 x 通过 self.proj 进行投影，特征变换
+    # 将 x 的最后一个维度从 hidden_channels 转换为 out_channels * 2
+    # 然后将其乘以 x_mask，将填充位置的输出设置为0
     stats = self.proj(x) * x_mask
 
+    # 将 stats 沿着最后一个维度分割为两个部分 高斯分布的均值 m 和 高斯分布的标准差 logs
+    # 两个部分是为了用于后续的高斯分布参数计算，用于计算损失函数的均值和标准差
     m, logs = torch.split(stats, self.out_channels, dim=1)
     return x, m, logs, x_mask
 
@@ -412,6 +448,28 @@ class SynthesizerTrn(nn.Module):
                gin_channels=0,
                use_sdp=True,
                **kwargs):
+    """
+    :param n_vocab: 词汇表的大小
+    :param spec_channels: 声谱图的通道数
+    :param segment_size: 分段的大小
+    :param inter_channels: 编码器和解码器之间的通道数
+    :param hidden_channels: 模型中的隐藏通道数
+    :param filter_channels: 每个卷积层中的过滤器数
+    :param n_heads: 多头自注意力中的头数
+    :param n_layers: 编码器和解码器中的卷积层数量
+    :param kernel_size: 卷积核的大小
+    :param p_dropout: dropout概率
+    :param resblock: 是否使用残差块
+    :param resblock_kernel_sizes: 残差块中的卷积核大小
+    :param resblock_dilation_sizes: 残差块中的空洞卷积核大小
+    :param upsample_rates: 上采样率
+    :param upsample_initial_channel: 上采样前的通道数
+    :param upsample_kernel_sizes: 上采样层中的卷积核大小
+    :param n_speakers: 说话人的数量（对于单说话人语音合成为0）
+    :param gin_channels: 全局条件嵌入的大小
+    :param use_sdp: 是否使用随机持续时间预测器
+    :param kwargs: 任意数量的关键字参数
+    """
 
     super().__init__()
     self.n_vocab = n_vocab
@@ -432,7 +490,6 @@ class SynthesizerTrn(nn.Module):
     self.segment_size = segment_size
     self.n_speakers = n_speakers
     self.gin_channels = gin_channels
-
     self.use_sdp = use_sdp
 
     self.enc_p = TextEncoder(n_vocab,
@@ -443,6 +500,7 @@ class SynthesizerTrn(nn.Module):
                              n_layers,
                              kernel_size,
                              p_dropout)
+
     self.dec = Generator(inter_channels, resblock, resblock_kernel_sizes, resblock_dilation_sizes, upsample_rates, upsample_initial_channel, upsample_kernel_sizes, gin_channels=gin_channels)
     self.enc_q = PosteriorEncoder(spec_channels, inter_channels, hidden_channels, 5, 1, 16, gin_channels=gin_channels)
     self.flow = ResidualCouplingBlock(inter_channels, hidden_channels, 5, 1, 4, gin_channels=gin_channels)
