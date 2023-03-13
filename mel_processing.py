@@ -7,28 +7,35 @@ MAX_WAV_VALUE = 32768.0
 
 def dynamic_range_compression_torch(x, C=1, clip_val=1e-5):
   """
-  PARAMS
-  ------
-  C: compression factor
+  对输入的张量进行动态范围压缩。
+  对输入的张量取对数并乘以一个压缩因子C，再通过 torch.clamp 函数将张量的最小值限制在 clip_val 以及 C 与张量最大值的乘积之间
+
+  :param C: compression factor
   """
   return torch.log(torch.clamp(x, min=clip_val) * C)
 
 
 def dynamic_range_decompression_torch(x, C=1):
   """
-  PARAMS
-  ------
-  C: compression factor used to compress
+  对已经压缩的张量进行解压缩操作。具体来说，就是对输入的张量先取指数，再除以压缩因子C
+
+  :param C: compression factor used to compress
   """
   return torch.exp(x) / C
 
 
 def spectral_normalize_torch(magnitudes):
+  """
+  对输入的矩阵进行归一化处理
+  """
   output = dynamic_range_compression_torch(magnitudes)
   return output
 
 
 def spectral_de_normalize_torch(magnitudes):
+  """
+  对已经归一化的矩阵进行解归一化操作
+  """
   output = dynamic_range_decompression_torch(magnitudes)
   return output
 
@@ -128,18 +135,38 @@ def spec_to_mel_torch(spec, n_fft, num_mels, sampling_rate, fmin, fmax):
 
 
 def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=False):
+  """
+  从音频信号计算Mel spectrogram
+  TODO：合并到上面两个方法中
+
+  :param y: 输入的音频信号，作为一个1维张量
+  :param n_fft: FFT大小
+  :param num_mels: 输出Mel频率图的通道数
+  :param sampling_rate: 输入音频信号的采样率
+  :param hop_size: 时间跨度
+  :param win_size: 窗口大小
+  :param fmin: filterbank的最低频率
+  :param fmax: filterbank的最高频率
+  :param center: 在中心上进行填充
+  """
+
   if torch.min(y) < -1.:
     print('min value is ', torch.min(y))
   if torch.max(y) > 1.:
     print('max value is ', torch.max(y))
 
+  # 已在上面两个方法中解释
   global mel_basis, hann_window
   dtype_device = str(y.dtype) + '_' + str(y.device)
   fmax_dtype_device = str(fmax) + '_' + dtype_device
   wnsize_dtype_device = str(win_size) + '_' + dtype_device
+
+  # spec_to_mel_torch
   if fmax_dtype_device not in mel_basis:
     mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
     mel_basis[fmax_dtype_device] = torch.from_numpy(mel).to(dtype=y.dtype, device=y.device)
+
+  # spectrogram_torch
   if wnsize_dtype_device not in hann_window:
     hann_window[wnsize_dtype_device] = torch.hann_window(win_size).to(dtype=y.dtype, device=y.device)
 
