@@ -10,6 +10,17 @@ from modules import LayerNorm
 
 class Encoder(nn.Module):
   def __init__(self, hidden_channels, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0., window_size=4, **kwargs):
+    """
+    :param hidden_channels: 隐藏层的维度
+    :param filter_channels: Feedforward层中的卷积层的输出维度
+    :param n_heads: MultiHeadAttention中的头数
+    :param n_layers: Encoder中的层数
+    :param kernel_size: Feedforward层中卷积核的大小
+    :param p_dropout: Dropout的概率
+    :param window_size: 用于Local Self-Attention的窗口大小
+    :param kwargs: 任意数量和类型的关键字
+    """
+
     super().__init__()
     self.hidden_channels = hidden_channels
     self.filter_channels = filter_channels
@@ -20,10 +31,17 @@ class Encoder(nn.Module):
     self.window_size = window_size
 
     self.drop = nn.Dropout(p_dropout)
+    # 用于保存多个模型实例，在模型中进行参数共享和参数复用
+    # MultiHeadAttention
     self.attn_layers = nn.ModuleList()
+    # LayerNorm
     self.norm_layers_1 = nn.ModuleList()
+    # Feedforward
     self.ffn_layers = nn.ModuleList()
+    # LayerNorm
     self.norm_layers_2 = nn.ModuleList()
+
+    # 对每一层进行实例化
     for i in range(self.n_layers):
       self.attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, window_size=window_size))
       self.norm_layers_1.append(LayerNorm(hidden_channels))
@@ -31,16 +49,34 @@ class Encoder(nn.Module):
       self.norm_layers_2.append(LayerNorm(hidden_channels))
 
   def forward(self, x, x_mask):
+    """
+    :param x: 输入序列 (batch_size, seq_len, hidden_channels)
+    :param x_mask: 输入序列的掩码，用于将填充部分的信息屏蔽掉 (batch_size, seq_len)
+    """
+
+    # 计算一个attention掩码
+    # x_mask在第二个维度上unsqueeze（扩展）两次，然后进行逐元素相乘。
+    # 这样得到的掩码可以用于在计算MultiHeadAttention中屏蔽掉无效的位置。
     attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+    # 屏蔽掉填充的信息
     x = x * x_mask
+
     for i in range(self.n_layers):
+      # 使用MultiHeadAttention模型self.attn_layers[i]，对输入x进行attention计算，计算出attention的结果y；
       y = self.attn_layers[i](x, x, attn_mask)
+      # 对attention结果y进行dropout
       y = self.drop(y)
+      # 将x和y的结果进行残差连接，即x + y，然后使用LayerNorm模型self.norm_layers_1[i]对结果进行标准化，得到编码后的输出x；
       x = self.norm_layers_1[i](x + y)
 
+      # 使用Feedforward模型self.ffn_layers[i]对编码后的输出x进行前向传播计算，计算出结果y；
       y = self.ffn_layers[i](x, x_mask)
+      # 对y进行dropout
       y = self.drop(y)
+      # 再次将x和y的结果进行残差连接，对结果进行标准化
       x = self.norm_layers_2[i](x + y)
+
+    # 将编码后的输出x与x_mask进行逐元素相乘，以屏蔽掉填充的信息
     x = x * x_mask
     return x
 
@@ -64,6 +100,7 @@ class Decoder(nn.Module):
     self.norm_layers_1 = nn.ModuleList()
     self.ffn_layers = nn.ModuleList()
     self.norm_layers_2 = nn.ModuleList()
+
     for i in range(self.n_layers):
       self.self_attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, proximal_bias=proximal_bias, proximal_init=proximal_init))
       self.norm_layers_0.append(LayerNorm(hidden_channels))
@@ -80,6 +117,7 @@ class Decoder(nn.Module):
     self_attn_mask = commons.subsequent_mask(x_mask.size(2)).to(device=x.device, dtype=x.dtype)
     encdec_attn_mask = h_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
     x = x * x_mask
+
     for i in range(self.n_layers):
       y = self.self_attn_layers[i](x, x, self_attn_mask)
       y = self.drop(y)
@@ -92,6 +130,7 @@ class Decoder(nn.Module):
       y = self.ffn_layers[i](x, x_mask)
       y = self.drop(y)
       x = self.norm_layers_2[i](x + y)
+
     x = x * x_mask
     return x
 
@@ -128,6 +167,7 @@ class MultiHeadAttention(nn.Module):
     nn.init.xavier_uniform_(self.conv_q.weight)
     nn.init.xavier_uniform_(self.conv_k.weight)
     nn.init.xavier_uniform_(self.conv_v.weight)
+
     if proximal_init:
       with torch.no_grad():
         self.conv_k.weight.copy_(self.conv_q.weight)
@@ -151,28 +191,37 @@ class MultiHeadAttention(nn.Module):
     value = value.view(b, self.n_heads, self.k_channels, t_s).transpose(2, 3)
 
     scores = torch.matmul(query / math.sqrt(self.k_channels), key.transpose(-2, -1))
+
     if self.window_size is not None:
       assert t_s == t_t, "Relative attention is only available for self-attention."
+
       key_relative_embeddings = self._get_relative_embeddings(self.emb_rel_k, t_s)
       rel_logits = self._matmul_with_relative_keys(query / math.sqrt(self.k_channels), key_relative_embeddings)
       scores_local = self._relative_position_to_absolute_position(rel_logits)
       scores = scores + scores_local
+
     if self.proximal_bias:
       assert t_s == t_t, "Proximal bias is only available for self-attention."
       scores = scores + self._attention_bias_proximal(t_s).to(device=scores.device, dtype=scores.dtype)
+
     if mask is not None:
       scores = scores.masked_fill(mask == 0, -1e4)
+
       if self.block_length is not None:
         assert t_s == t_t, "Local attention is only available for self-attention."
+
         block_mask = torch.ones_like(scores).triu(-self.block_length).tril(self.block_length)
         scores = scores.masked_fill(block_mask == 0, -1e4)
+
     p_attn = F.softmax(scores, dim=-1)  # [b, n_h, t_t, t_s]
     p_attn = self.drop(p_attn)
     output = torch.matmul(p_attn, value)
+
     if self.window_size is not None:
       relative_weights = self._absolute_position_to_relative_position(p_attn)
       value_relative_embeddings = self._get_relative_embeddings(self.emb_rel_v, t_s)
       output = output + self._matmul_with_relative_values(relative_weights, value_relative_embeddings)
+
     output = output.transpose(2, 3).contiguous().view(b, d, t_t)  # [b, n_h, t_t, d_k] -> [b, d, t_t]
     return output, p_attn
 
@@ -200,13 +249,16 @@ class MultiHeadAttention(nn.Module):
     pad_length = max(length - (self.window_size + 1), 0)
     slice_start_position = max((self.window_size + 1) - length, 0)
     slice_end_position = slice_start_position + 2 * length - 1
+
     if pad_length > 0:
       padded_relative_embeddings = F.pad(
         relative_embeddings,
         commons.convert_pad_shape([[0, 0], [pad_length, pad_length], [0, 0]]))
     else:
       padded_relative_embeddings = relative_embeddings
+
     used_relative_embeddings = padded_relative_embeddings[:, slice_start_position:slice_end_position]
+
     return used_relative_embeddings
 
   def _relative_position_to_absolute_position(self, x):
@@ -274,28 +326,35 @@ class FFN(nn.Module):
 
   def forward(self, x, x_mask):
     x = self.conv_1(self.padding(x * x_mask))
+
     if self.activation == "gelu":
       x = x * torch.sigmoid(1.702 * x)
     else:
       x = torch.relu(x)
+
     x = self.drop(x)
     x = self.conv_2(self.padding(x * x_mask))
+
     return x * x_mask
 
   def _causal_padding(self, x):
     if self.kernel_size == 1:
       return x
+
     pad_l = self.kernel_size - 1
     pad_r = 0
     padding = [[0, 0], [0, 0], [pad_l, pad_r]]
     x = F.pad(x, commons.convert_pad_shape(padding))
+
     return x
 
   def _same_padding(self, x):
     if self.kernel_size == 1:
       return x
+
     pad_l = (self.kernel_size - 1) // 2
     pad_r = self.kernel_size // 2
     padding = [[0, 0], [0, 0], [pad_l, pad_r]]
     x = F.pad(x, commons.convert_pad_shape(padding))
+
     return x
