@@ -81,7 +81,7 @@ class ConvReluNorm(nn.Module):
 
 class DDSConv(nn.Module):
   """
-  Dialted and Depth-Separable Convolution
+  Dilated and Depth-Separable Convolution
   深度可分离卷积和空洞卷积
   用于在音频信号处理中进行特征提取和降噪
   """
