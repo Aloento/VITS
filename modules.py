@@ -77,6 +77,8 @@ class ConvReluNorm(nn.Module):
 class DDSConv(nn.Module):
   """
   Dialted and Depth-Separable Convolution
+  深度可分离卷积和空洞卷积
+  用于在音频信号处理中进行特征提取和降噪
   """
 
   def __init__(self, channels, kernel_size, n_layers, p_dropout=0.):
@@ -91,6 +93,7 @@ class DDSConv(nn.Module):
     self.convs_1x1 = nn.ModuleList()
     self.norms_1 = nn.ModuleList()
     self.norms_2 = nn.ModuleList()
+
     for i in range(n_layers):
       dilation = kernel_size ** i
       padding = (kernel_size * dilation - dilation) // 2
@@ -102,17 +105,33 @@ class DDSConv(nn.Module):
       self.norms_2.append(LayerNorm(channels))
 
   def forward(self, x, x_mask, g=None):
+    """
+    模型是一个由多个 depthwise separable convolution 组成的堆叠，每个卷积层都有一个1x1卷积和一些规范化层
+
+    :param g: 条件输入
+    """
+
     if g is not None:
       x = x + g
+
     for i in range(self.n_layers):
+      # 将掩码应用到输入上
+      # 一维深度可分离卷积
       y = self.convs_sep[i](x * x_mask)
+      # 归一化
       y = self.norms_1[i](y)
+      # 激活函数
       y = F.gelu(y)
+      # 1x1的卷积
       y = self.convs_1x1[i](y)
+      # 归一化
       y = self.norms_2[i](y)
+      # 激活函数
       y = F.gelu(y)
+      # 防止过拟合
       y = self.drop(y)
       x = x + y
+
     return x * x_mask
 
 

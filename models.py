@@ -15,8 +15,20 @@ from commons import init_weights, get_padding
 
 class StochasticDurationPredictor(nn.Module):
   def __init__(self, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4, gin_channels=0):
+    """
+    随机持续时间模型
+    输入是一段语音信号的mel spectrogram，输出是对每个时刻的语音帧的持续时间的概率分布
+
+    :param in_channels: 输入数据的通道数
+    :param filter_channels: 滤波器的通道数
+    :param kernel_size: 滤波器的内核大小
+    :param p_dropout: 在训练中应用的Dropout概率
+    :param n_flows: 要应用的正向和反向流的数量
+    :param gin_channels: 可选的全局条件通道数
+    """
+
     super().__init__()
-    filter_channels = in_channels  # it needs to be removed from future version.
+    filter_channels = in_channels  # TODO: it needs to be removed from future version.
     self.in_channels = in_channels
     self.filter_channels = filter_channels
     self.kernel_size = kernel_size
@@ -27,8 +39,12 @@ class StochasticDurationPredictor(nn.Module):
     self.log_flow = modules.Log()
     self.flows = nn.ModuleList()
     self.flows.append(modules.ElementwiseAffine(2))
+
+    # n_flows指定了要堆叠多少个流，每个流都由ConvFlow和Flip两个模块构成
     for i in range(n_flows):
       self.flows.append(modules.ConvFlow(2, filter_channels, kernel_size, n_layers=3))
+      # 执行变量的交换。它通过将数据张量的第2个维度翻转，通常是时间步。
+      # 这种操作可以改变时序的顺序，从而扩大了模型的变换空间，从而提高了建模语音时序结构的能力
       self.flows.append(modules.Flip())
 
     self.post_pre = nn.Conv1d(1, filter_channels, 1)
@@ -36,6 +52,7 @@ class StochasticDurationPredictor(nn.Module):
     self.post_convs = modules.DDSConv(filter_channels, kernel_size, n_layers=3, p_dropout=p_dropout)
     self.post_flows = nn.ModuleList()
     self.post_flows.append(modules.ElementwiseAffine(2))
+
     for i in range(4):
       self.post_flows.append(modules.ConvFlow(2, filter_channels, kernel_size, n_layers=3))
       self.post_flows.append(modules.Flip())
@@ -43,6 +60,7 @@ class StochasticDurationPredictor(nn.Module):
     self.pre = nn.Conv1d(in_channels, filter_channels, 1)
     self.proj = nn.Conv1d(filter_channels, filter_channels, 1)
     self.convs = modules.DDSConv(filter_channels, kernel_size, n_layers=3, p_dropout=p_dropout)
+
     if gin_channels != 0:
       self.cond = nn.Conv1d(gin_channels, filter_channels, 1)
 
