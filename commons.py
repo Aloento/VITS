@@ -1,7 +1,8 @@
 import math
-from typing import List
+from typing import List, Optional
 
 import torch
+from torch import Tensor
 from torch.nn import functional as F
 
 
@@ -112,12 +113,16 @@ def shift_1d(x):
   return x
 
 
-def sequence_mask(length, max_length=None):
+def sequence_mask(length: Tensor, max_length: Optional[int] = None):
   """
-  生成一个二维的布尔掩码
+  生成一个二维的序列掩码，用于在序列张量中过滤填充。
   这个掩码是用来屏蔽输入中填充的位置的。在自然语言处理中，经常需要对变长的文本序列进行处理，
   因为不同的句子长度可能不同，需要对其进行填充，使得所有句子都具有相同的长度。
   但是，由于填充的位置是没有实际意义的，所以在进行模型计算时需要将填充位置的信息屏蔽掉。这就是这个掩码的作用。
+
+  :param length: 序列长度
+  :param max_length: 最大序列长度
+  :return: :math:`[B, T_max]`
   """
 
   if max_length is None:

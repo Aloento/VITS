@@ -1,7 +1,8 @@
 import math
+from typing import Optional
 
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch.nn import Conv1d
 from torch.nn import functional as F
 from torch.nn.utils import weight_norm, remove_weight_norm
@@ -328,16 +329,18 @@ class ElementwiseAffine(nn.Module):
 
 class ResidualCouplingLayer(nn.Module):
   def __init__(self,
-               channels,
-               hidden_channels,
-               kernel_size,
-               dilation_rate,
-               n_layers,
-               p_dropout=0,
-               gin_channels=0,
-               mean_only=False):
+               channels: int,
+               hidden_channels: int,
+               kernel_size: int,
+               dilation_rate: int,
+               n_layers: int,
+               p_dropout: int = 0,
+               gin_channels: int = 0,
+               mean_only=False
+               ):
     assert channels % 2 == 0, "channels should be divisible by 2"
     super().__init__()
+
     self.channels = channels
     self.hidden_channels = hidden_channels
     self.kernel_size = kernel_size
@@ -348,15 +351,27 @@ class ResidualCouplingLayer(nn.Module):
 
     self.pre = nn.Conv1d(self.half_channels, hidden_channels, 1)
     self.enc = WN(hidden_channels, kernel_size, dilation_rate, n_layers, p_dropout=p_dropout, gin_channels=gin_channels)
+
+    # 输出层
+    # 初始化最后一层为0，使得仿射耦合层在一开始什么都不做，这有助于训练的稳定性
     self.post = nn.Conv1d(hidden_channels, self.half_channels * (2 - mean_only), 1)
     self.post.weight.data.zero_()
     self.post.bias.data.zero_()
 
-  def forward(self, x, x_mask, g=None, reverse=False):
+  def forward(self, x: Tensor, x_mask: Tensor, g: Optional[Tensor] = None, reverse=False):
+    """
+    设置 reverse=True 用于推理。
+
+    :param x: :math:`[B, C, T]`
+    :param x_mask: :math:`[B, 1, T]`
+    :param g: :math:`[B, C, 1]`
+    """
+
     x0, x1 = torch.split(x, [self.half_channels] * 2, 1)
     h = self.pre(x0) * x_mask
     h = self.enc(h, x_mask, g=g)
     stats = self.post(h) * x_mask
+
     if not self.mean_only:
       m, logs = torch.split(stats, [self.half_channels] * 2, 1)
     else:
