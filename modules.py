@@ -14,14 +14,18 @@ LRELU_SLOPE = 0.1
 
 
 class LayerNorm(nn.Module):
-  def __init__(self, channels, eps=1e-5):
+  def __init__(self, channels: int, eps: float = 1e-5):
     """
     标准的 Layer Normalization 模块，用于对输入进行标准化
     可以有效地缓解神经网络在训练过程中的梯度消失或梯度爆炸问题
 
-    :param channels: 输入的特征维度数
-    :param eps: 控制标准化的精度
+    - input: (B, C, T)
+    - output: (B, C, T)
+
+    :param channels: 输入的通道数（第二维度）
+    :param eps: 用于避免除以 0 的小量
     """
+
     super().__init__()
     self.channels = channels
     self.eps = eps

@@ -67,9 +67,11 @@ class StochasticDurationPredictor(nn.Module):
   def forward(self, x, x_mask, w=None, g=None, reverse=False, noise_scale=1.0):
     x = torch.detach(x)
     x = self.pre(x)
+
     if g is not None:
       g = torch.detach(g)
       x = x + self.cond(g)
+
     x = self.convs(x, x_mask)
     x = self.proj(x) * x_mask
 
@@ -151,24 +153,25 @@ class DurationPredictor(nn.Module):
 
 class TextEncoder(nn.Module):
   def __init__(self,
-               n_vocab,
-               out_channels,
-               hidden_channels,
-               filter_channels,
-               n_heads,
-               n_layers,
-               kernel_size,
-               p_dropout):
+               n_vocab: int,
+               out_channels: int,
+               hidden_channels: int,
+               filter_channels: int,
+               n_heads: int,
+               n_layers: int,
+               kernel_size: int,
+               p_dropout: float
+               ):
     """
     将文本序列中的每个单词转换为向量
 
-    :param n_vocab: 输入词表大小
+    :param n_vocab: 嵌入层中字符的数量
     :param out_channels: 输出通道数
     :param hidden_channels: 隐藏通道数
     :param filter_channels: 卷积层的滤波器通道数
     :param n_heads: 注意力头数
-    :param n_layers: 编码器层数
-    :param kernel_size: 卷积核大小
+    :param n_layers: Transformer层数
+    :param kernel_size: Transformer网络中FFN层的卷积核大小
     :param p_dropout: Dropout 概率
     """
 
@@ -190,13 +193,14 @@ class TextEncoder(nn.Module):
     nn.init.normal_(self.emb.weight, 0.0, hidden_channels ** -0.5)
 
     # 多头自注意力机制编码器层
-    self.encoder = attentions.Encoder(
+    self.encoder = attentions.RelativePositionTransformer(
       hidden_channels,
       filter_channels,
       n_heads,
       n_layers,
       kernel_size,
-      p_dropout)
+      p_dropout
+    )
 
     # 一维卷积层，hidden_channels 是输入通道数，1 是卷积核的大小
     self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
@@ -446,7 +450,7 @@ class SynthesizerTrn(nn.Module):
   """
 
   def __init__(self,
-               n_vocab,
+               num_chars: int,
                spec_channels,
                segment_size,
                inter_channels,
@@ -467,7 +471,7 @@ class SynthesizerTrn(nn.Module):
                use_sdp=True,
                **kwargs):
     """
-    :param n_vocab: 词汇表的大小
+    :param num_chars: 词汇表的大小
     :param spec_channels: 声谱图的通道数
     :param segment_size: 分段的大小
     :param inter_channels: 编码器和解码器之间的通道数
@@ -490,7 +494,7 @@ class SynthesizerTrn(nn.Module):
     """
 
     super().__init__()
-    self.n_vocab = n_vocab
+    self.n_vocab = num_chars
     self.spec_channels = spec_channels
     self.inter_channels = inter_channels
     self.hidden_channels = hidden_channels
@@ -510,7 +514,7 @@ class SynthesizerTrn(nn.Module):
     self.gin_channels = gin_channels
     self.use_sdp = use_sdp
 
-    self.enc_p = TextEncoder(n_vocab,
+    self.enc_p = TextEncoder(num_chars,
                              inter_channels,
                              hidden_channels,
                              filter_channels,
