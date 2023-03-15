@@ -18,7 +18,8 @@ class RelativePositionTransformer(nn.Module):
       n_layers: int,
       kernel_size: int = 1,
       p_dropout: float = 0.,
-      window_size: int = 4
+      window_size: int = 4,
+      **kwargs
   ):
     """
     :param hidden_channels: 隐藏层的维度
@@ -107,7 +108,18 @@ class RelativePositionTransformer(nn.Module):
 
 
 class Decoder(nn.Module):
-  def __init__(self, hidden_channels, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0., proximal_bias=False, proximal_init=True, **kwargs):
+  def __init__(
+      self,
+      hidden_channels: int,
+      filter_channels: int,
+      n_heads: int,
+      n_layers: int,
+      kernel_size=1,
+      p_dropout=0.,
+      proximal_bias=False,
+      proximal_init=True,
+      **kwargs
+  ):
     """
     :param hidden_channels: 隐藏层通道数
     :param filter_channels: 前馈神经网络中卷积层的输出通道数
@@ -140,11 +152,36 @@ class Decoder(nn.Module):
 
     # 对每一层进行实例化
     for i in range(self.n_layers):
-      self.self_attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, proximal_bias=proximal_bias, proximal_init=proximal_init))
+      self.self_attn_layers.append(
+        MultiHeadAttention(
+          hidden_channels,
+          hidden_channels,
+          n_heads,
+          p_dropout=p_dropout,
+          proximal_bias=proximal_bias,
+          proximal_init=proximal_init
+        )
+      )
       self.norm_layers_0.append(LayerNorm(hidden_channels))
-      self.encdec_attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout))
+      self.encdec_attn_layers.append(
+        MultiHeadAttention(
+          hidden_channels,
+          hidden_channels,
+          n_heads,
+          p_dropout=p_dropout
+        )
+      )
       self.norm_layers_1.append(LayerNorm(hidden_channels))
-      self.ffn_layers.append(FeedForwardNetwork(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout=p_dropout, causal=True))
+      self.ffn_layers.append(
+        FeedForwardNetwork(
+          hidden_channels,
+          hidden_channels,
+          filter_channels,
+          kernel_size,
+          p_dropout=p_dropout,
+          causal=True
+        )
+      )
       self.norm_layers_2.append(LayerNorm(hidden_channels))
 
   def forward(self, x, x_mask, h, h_mask):
@@ -291,7 +328,7 @@ class MultiHeadAttention(nn.Module):
         # 将查询部分的权重和偏置复制给键部分的权重和偏置，从而使它们在初始化时具有相同的值
         # 这种方法可以增强多头自注意力层的性能
         self.conv_k.weight.copy_(self.conv_q.weight)
-        self.conv_k.bias.copy_(self.conv_q.bias)
+        self.conv_k.bias.copy_(self.conv_q.bias)  # type: ignore
 
   def forward(self, x: Tensor, c: Tensor, attn_mask: Optional[Tensor] = None):
     """
@@ -329,13 +366,32 @@ class MultiHeadAttention(nn.Module):
 
     # 每个位置的向量会被拆成 num_heads 份，每份 k_channels 个元素。
     # 这里使用 view 方法将形状转换，并使用 transpose 方法将最后两维交换位置，使得最后一维变成 sequence_length，方便之后计算注意力。
-    query = query.view(b, self.n_heads, self.k_channels, t_t).transpose(2, 3)
-    key = key.view(b, self.n_heads, self.k_channels, t_s).transpose(2, 3)
-    value = value.view(b, self.n_heads, self.k_channels, t_s).transpose(2, 3)
+    # [b,h,c,t_t]
+    query = query.view(
+      b,
+      self.n_heads,
+      self.k_channels,
+      t_t
+    )
+    # [b,h,c,t_s]
+    key = key.view(
+      b,
+      self.n_heads,
+      self.k_channels,
+      t_s
+    )
+    # [b,h,c,t_s]
+    value = value.view(
+      b,
+      self.n_heads,
+      self.k_channels,
+      t_s
+    )
 
     # 多头注意力机制中的得分计算部分
     # 将query与key进行点积计算，并除以一个归一化因子 $\sqrt{d_k}$ (是为了防止点积过大或过小导致梯度消失或爆炸)，得到得分矩阵 scores
-    scores = torch.matmul(query / math.sqrt(self.k_channels), key.transpose(-2, -1))
+    # [b,h,t_t,t_s]
+    scores = torch.einsum('bhdt,bhds -> bhts', query / math.sqrt(self.k_channels), key)
 
     if self.window_size is not None:
       assert t_s == t_t, "Relative attention is only available for self-attention."
@@ -343,7 +399,11 @@ class MultiHeadAttention(nn.Module):
       # key 的相对位置编码
       key_relative_embeddings = self._get_relative_embeddings(self.emb_rel_k, t_s)
       # 相对位置得分矩阵
-      rel_logits = self._matmul_with_relative_keys(query / math.sqrt(self.k_channels), key_relative_embeddings)
+      # [b,h,c,t_t],[h or 1,e,c] -> [b,h,t_t,e]
+      rel_logits = torch.einsum(
+        'bhdt,hed->bhte',
+        query / math.sqrt(self.k_channels), key_relative_embeddings
+      )
       # 绝对位置得分矩阵
       scores_local = self._relative_position_to_absolute_position(rel_logits)
       scores = scores + scores_local
@@ -368,23 +428,31 @@ class MultiHeadAttention(nn.Module):
         scores = scores.masked_fill(block_mask == 0, -1e4)
 
     # 对得分矩阵进行处理，得到归一化的attention权重矩阵
-    p_attn = F.softmax(scores, dim=-1)  # [b, n_h, t_t, t_s]
+    # [b, h, t_t, t_s]
+    p_attn = F.softmax(scores, dim=-1)
     # 防止过拟合
     p_attn = self.drop(p_attn)
     # 进行点积操作，得到最终的输出结果
-    output = torch.matmul(p_attn, value)
+    # [b,h,c,t_s],[b,h,t_t,t_s] -> [b,h,c,t_t]
+    output = torch.einsum('bhcs,bhts->bhct', value, p_attn)
 
     if self.window_size is not None:
       # 使用相对位置编码来调整输出结果
       # 转换为相对位置的权重
+      # # [b, h, t_t, 2*t_t-1]
       relative_weights = self._absolute_position_to_relative_position(p_attn)
       # 从self.emb_rel_v中获取相对位置编码
+      # [h or 1, 2*t_t-1, c]
       value_relative_embeddings = self._get_relative_embeddings(self.emb_rel_v, t_s)
       # 将相对位置权重和相对位置编码相乘
-      output = output + self._matmul_with_relative_values(relative_weights, value_relative_embeddings)
+      # [b, h, t_t, 2*t_t-1],[h or 1, 2*t_t-1, c] -> [b, h, c, t_t]
+      output = output + torch.einsum(
+        'bhte,hec->bhct',
+        relative_weights, value_relative_embeddings
+      )
 
-    # [b, n_h, t_t, d_k] -> [b, d, t_t]
-    output = output.transpose(2, 3).contiguous().view(b, d, t_t)
+    # [b, h, c, t_t] -> [b, d, t_t]
+    output = output.view(b, d, t_t)
     return output, p_attn
 
   @staticmethod
@@ -392,12 +460,9 @@ class MultiHeadAttention(nn.Module):
     """
     将输入序列中所有位置的相对位置编码和特征编码相乘，得到每个位置对其他位置的贡献
 
-    :param p_attn: 注意力权重
-    :param re: 相对值嵌入向量 (a_(i,j)^V)
+    :param p_attn: 注意力权重 :math:`[B, H, T, V]`
+    :param re: 相对值嵌入向量 (a_(i,j)^V) :math:`[H or 1, V, D]`
     :return: :math:`[B, H, T, D]`
-
-    - p_attn: :math:`[B, H, T, V]`
-    - re: :math:`[H or 1, V, D]`
     """
 
     logits = torch.matmul(p_attn, re.unsqueeze(0))
@@ -406,8 +471,8 @@ class MultiHeadAttention(nn.Module):
   @staticmethod
   def _matmul_with_relative_keys(query: Tensor, re: Tensor):
     """
-    :param query: 查询向量的批量。(x*W^Q)
-    :param re: 相对位置键嵌入向量。(a_(i,j)^K)
+    :param query: 查询向量的批量。(x*W^Q) :math:`[B, H, T, D]`
+    :param re: 相对位置键嵌入向量。(a_(i,j)^K) :math:`[H or 1, V, D]`
     :return: :math:`[B, H, T, V]`
 
     b: batch size
@@ -415,15 +480,12 @@ class MultiHeadAttention(nn.Module):
     l: 序列长度
     d: 特征维度
     m: 相对位置嵌入矩阵的长度
-
-    - query: :math:`[B, H, T, D]`
-    - re: :math:`[H or 1, V, D]`
     """
 
     # 对于输入的 x 和 y，矩阵乘法的结果是一个形状为 [b, h, l, 1, d] 的张量，
     # 然后使用 unsqueeze(3) 操作将第 3 个维度扩展为 m，
     # 最后使用 transpose(-2, -1) 操作将张量的最后两个维度交换，变成形状为 [b, h, l, d, m]
-    logits = torch.matmul(query, re.unsqueeze(0).transpose(-2, -1))
+    logits = torch.einsum('bhld,hmd -> bhlm', query, re)
     return logits
 
   def _get_relative_embeddings(self, relative_embeddings: Parameter, length: int) -> Tensor:
@@ -435,9 +497,9 @@ class MultiHeadAttention(nn.Module):
 
     # Pad first before slice to avoid using cond ops.
     # 用于填充相对位置编码矩阵的长度差值，以使其能够满足给定长度的要求
-    pad_length = max(length - (self.window_size + 1), 0)
+    pad_length = max(length - (self.window_size + 1), 0)  # type: ignore
     # 子矩阵的起始位置
-    slice_start_position = max((self.window_size + 1) - length, 0)
+    slice_start_position = max((self.window_size + 1) - length, 0)  # type: ignore
     # 结束位置
     slice_end_position = slice_start_position + 2 * length - 1
 
