@@ -26,6 +26,7 @@ from mel_processing import mel_spectrogram_torch, spec_to_mel_torch
 from models import (
   SynthesizerTrn,
   MultiPeriodDiscriminator,
+  AvocodoDiscriminator
 )
 from text.symbols import symbols
 

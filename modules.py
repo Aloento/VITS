@@ -67,9 +67,16 @@ class DDSConv(nn.Module):
     for i in range(n_layers):
       dilation = kernel_size ** i
       padding = (kernel_size * dilation - dilation) // 2
-      self.convs_sep.append(nn.Conv1d(channels, channels, kernel_size,
-                                      groups=channels, dilation=dilation, padding=padding
-                                      ))
+      self.convs_sep.append(
+        nn.Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          groups=channels,
+          dilation=dilation,
+          padding=padding
+        )
+      )
       self.convs_1x1.append(nn.Conv1d(channels, channels, 1))
       self.norms_1.append(LayerNorm(channels))
       self.norms_2.append(LayerNorm(channels))
@@ -432,16 +439,17 @@ class ElementwiseAffine(nn.Module):
 
 
 class ResidualCouplingLayer(nn.Module):
-  def __init__(self,
-               channels: int,
-               hidden_channels: int,
-               kernel_size: int,
-               dilation_rate: int,
-               n_layers: int,
-               p_dropout: int = 0,
-               gin_channels: int = 0,
-               mean_only=False
-               ):
+  def __init__(
+      self,
+      channels: int,
+      hidden_channels: int,
+      kernel_size: int,
+      dilation_rate: int,
+      n_layers: int,
+      p_dropout: int = 0,
+      gin_channels: int = 0,
+      mean_only=False
+  ):
     assert channels % 2 == 0, "channels should be divisible by 2"
     super().__init__()
 
