@@ -40,21 +40,25 @@ def main():
   assert torch.cuda.is_available(), "CPU training is not allowed."
 
   # 获取当前可用的GPU数量
-  n_gpus = torch.cuda.device_count()
+  num_gpus = torch.cuda.device_count()
+  # 获取配置
+  hps = utils.get_hparams()
+
+  if num_gpus == 1:
+    return run(0, 1, hps)
+
   # 用于在多个GPU之间进行通信
   os.environ['MASTER_ADDR'] = 'localhost'
   os.environ['MASTER_PORT'] = '8000'
 
-  # 获取配置
-  hps = utils.get_hparams()
   # 该函数将在每个GPU上运行
-  mp.spawn(run, nprocs=n_gpus, args=(n_gpus, hps,))
+  mp.spawn(run, nprocs=num_gpus, args=(num_gpus, hps))
 
 
-def run(rank, n_gpus, hps):
+def run(rank, num_gpus, hps):
   """
   :param rank: 当前进程的 ID
-  :param n_gpus: 可用的 GPU 数量
+  :param num_gpus: 可用的 GPU 数量
   :param hps: 配置
   """
 
@@ -74,11 +78,13 @@ def run(rank, n_gpus, hps):
     # 评估日志
     writer_eval = SummaryWriter(log_dir=os.path.join(hps.model_dir, "eval"))
 
-  # 初始化进程组
-  # backend: 使用 NVIDIA 提供的通信库 NCCL 进行通信
-  # init_method: 使用环境变量的方式初始化进程组
-  # world_size: 进程组的总数
-  dist.init_process_group(backend='nccl', init_method='env://', world_size=n_gpus, rank=rank)
+  if num_gpus > 1:
+    # 初始化进程组
+    # backend: 使用 NVIDIA 提供的通信库 NCCL 进行通信
+    # init_method: 使用环境变量的方式初始化进程组
+    # world_size: 进程组的总数
+    dist.init_process_group(backend='nccl', init_method='env://', world_size=num_gpus, rank=rank)
+
   # 设置随机数种子，使得每次运行代码时生成的随机数序列相同
   torch.manual_seed(hps.train.seed)
   # 设置当前使用的 GPU 设备，将当前进程绑定到 rank 对应的 GPU 设备上
@@ -90,10 +96,11 @@ def run(rank, n_gpus, hps):
   train_sampler = DistributedBucketSampler(
     train_dataset,
     hps.train.batch_size,
-    [32, 300, 400, 500, 600, 700, 800, 900, 1000],
-    num_replicas=n_gpus,
+    [32, 500, 600, 700, 800, 900, 1100, 1300, 1500],
+    num_replicas=num_gpus,
     rank=rank,
-    shuffle=True)
+    shuffle=True
+  )
 
   collate_fn = TextAudioCollate()
   # train_dataset：表示要加载的训练数据集。
@@ -102,16 +109,28 @@ def run(rank, n_gpus, hps):
   # pin_memory=True：表示将数据加载到 GPU 内存中，可以提高训练速度。
   # collate_fn=collate_fn：表示用于将数据集中的样本组合成一个 batch 的函数，这里采用了自定义的 TextAudioCollate 函数。
   # batch_sampler=train_sampler：表示使用自定义的 DistributedBucketSampler 对 batch 进行采样。
-  train_loader = DataLoader(train_dataset, num_workers=8, shuffle=False, pin_memory=True,
-                            collate_fn=collate_fn, batch_sampler=train_sampler)
+  train_loader = DataLoader(
+    train_dataset,
+    num_workers=8,
+    shuffle=False,
+    pin_memory=True,
+    collate_fn=collate_fn,
+    batch_sampler=train_sampler
+  )
 
   if rank == 0:
     # 加载验证数据
     # 不会丢弃最后一个 batch
     eval_dataset = TextAudioLoader(hps.data.validation_files, hps.data)
-    eval_loader = DataLoader(eval_dataset, num_workers=8, shuffle=False,
-                             batch_size=hps.train.batch_size, pin_memory=True,
-                             drop_last=False, collate_fn=collate_fn)
+    eval_loader = DataLoader(
+      eval_dataset,
+      num_workers=8,
+      shuffle=False,
+      batch_size=hps.train.batch_size,
+      pin_memory=True,
+      drop_last=False,
+      collate_fn=collate_fn
+    )
 
   net_g = SynthesizerTrn(
     len(symbols),
@@ -151,11 +170,32 @@ def run(rank, n_gpus, hps):
 
   for epoch in range(epoch_str, hps.train.epochs + 1):
     if rank == 0:
-      train_and_evaluate(rank, epoch, hps, [net_g, net_d], [optim_g, optim_d], [scheduler_g, scheduler_d], scaler, [
-        train_loader, eval_loader], logger, [writer, writer_eval])
+      train_and_evaluate(
+        rank,
+        epoch,
+        hps,
+        [net_g, net_d],
+        [optim_g, optim_d],
+        [scheduler_g, scheduler_d],
+        scaler,
+        [train_loader, eval_loader],
+        logger,
+        [writer, writer_eval]
+      )
     else:
-      train_and_evaluate(rank, epoch, hps, [net_g, net_d], [optim_g, optim_d], [scheduler_g, scheduler_d], scaler, [
-        train_loader, None], None, None)
+      train_and_evaluate(
+        rank,
+        epoch,
+        hps,
+        [net_g, net_d],
+        [optim_g, optim_d],
+        [scheduler_g, scheduler_d],
+        scaler,
+        [train_loader, None],
+        None,
+        None
+      )
+
     scheduler_g.step()
     scheduler_d.step()
 
