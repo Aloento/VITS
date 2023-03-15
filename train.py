@@ -12,8 +12,8 @@ from torch.utils.tensorboard import SummaryWriter  # 用于可视化训练和评
 import commons
 import utils
 from data_utils import (
-  TextAudioLoader,
-  TextAudioCollate,
+  TextAudioSpeakerLoader,
+  TextAudioSpeakerCollate,
   DistributedBucketSampler
 )
 from losses import (
@@ -91,7 +91,7 @@ def run(rank, num_gpus, hps):
   torch.cuda.set_device(rank)
 
   # 从音频和文本文件中加载数据
-  train_dataset = TextAudioLoader(hps.data.training_files, hps.data)
+  train_dataset = TextAudioSpeakerLoader(hps.data.training_files, hps.data)
   # 对数据进行采样
   train_sampler = DistributedBucketSampler(
     train_dataset,
@@ -102,7 +102,7 @@ def run(rank, num_gpus, hps):
     shuffle=True
   )
 
-  collate_fn = TextAudioCollate()
+  collate_fn = TextAudioSpeakerCollate()
   # train_dataset：表示要加载的训练数据集。
   # num_workers=8：表示使用 8 个进程来读取数据集。
   # shuffle=False：表示不对数据进行打乱。
@@ -121,7 +121,7 @@ def run(rank, num_gpus, hps):
   if rank == 0:
     # 加载验证数据
     # 不会丢弃最后一个 batch
-    eval_dataset = TextAudioLoader(hps.data.validation_files, hps.data)
+    eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps.data)
     eval_loader = DataLoader(
       eval_dataset,
       num_workers=8,
@@ -136,6 +136,7 @@ def run(rank, num_gpus, hps):
     len(symbols),
     hps.data.filter_length // 2 + 1,
     hps.train.segment_size // hps.data.hop_length,
+    n_speakers=hps.data.n_speakers,
     **hps.model).cuda(rank)
 
   net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm).cuda(rank)
@@ -213,14 +214,15 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
 
   net_g.train()
   net_d.train()
-  for batch_idx, (x, x_lengths, spec, spec_lengths, y, y_lengths) in enumerate(train_loader):
+  for batch_idx, (x, x_lengths, spec, spec_lengths, y, y_lengths, speakers) in enumerate(train_loader):
     x, x_lengths = x.cuda(rank, non_blocking=True), x_lengths.cuda(rank, non_blocking=True)
     spec, spec_lengths = spec.cuda(rank, non_blocking=True), spec_lengths.cuda(rank, non_blocking=True)
     y, y_lengths = y.cuda(rank, non_blocking=True), y_lengths.cuda(rank, non_blocking=True)
+    speakers = speakers.cuda(rank, non_blocking=True)
 
     with autocast(enabled=hps.train.fp16_run):
       y_hat, l_length, attn, ids_slice, x_mask, z_mask, \
-        (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(x, x_lengths, spec, spec_lengths)
+        (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(x, x_lengths, spec, spec_lengths, speakers)
 
       mel = spec_to_mel_torch(
         spec,
@@ -313,10 +315,11 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
 def evaluate(hps, generator, eval_loader, writer_eval):
   generator.eval()
   with torch.no_grad():
-    for batch_idx, (x, x_lengths, spec, spec_lengths, y, y_lengths) in enumerate(eval_loader):
+    for batch_idx, (x, x_lengths, spec, spec_lengths, y, y_lengths, speakers) in enumerate(eval_loader):
       x, x_lengths = x.cuda(0), x_lengths.cuda(0)
       spec, spec_lengths = spec.cuda(0), spec_lengths.cuda(0)
       y, y_lengths = y.cuda(0), y_lengths.cuda(0)
+      speakers = speakers.cuda(0)
 
       # remove else
       x = x[:1]
@@ -325,8 +328,10 @@ def evaluate(hps, generator, eval_loader, writer_eval):
       spec_lengths = spec_lengths[:1]
       y = y[:1]
       y_lengths = y_lengths[:1]
+      speakers = speakers[:1]
       break
-    y_hat, attn, mask, *_ = generator.module.infer(x, x_lengths, max_len=1000)
+
+    y_hat, attn, mask, *_ = generator.module.infer(x, x_lengths, speakers, max_len=1000)
     y_hat_lengths = mask.sum([1, 2]).long() * hps.data.hop_length
 
     mel = spec_to_mel_torch(

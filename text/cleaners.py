@@ -94,12 +94,11 @@ def remove_invalid_text(cleaned_text, lang_seq):
 
   for symbol, la in zip(cleaned_text, lang_seq):
     if symbol not in symbols:
-      print(cleaned_text)
-      print("skip:", symbol)
+      print("invalid skip:", symbol)
       continue
 
     if la == lang_map["other"]:
-      print("skip:", symbol)
+      print("invalid skip:", symbol)
       continue
 
     new_cleaned_text += symbol
