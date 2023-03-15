@@ -592,7 +592,7 @@ class DiscriminatorP(torch.nn.Module):
       [List[Tensor]]：每个卷积层的特征列表。
     """
 
-    fmap = []
+    feat = []
 
     # 1d to 2d
     b, c, t = x.shape
@@ -607,13 +607,13 @@ class DiscriminatorP(torch.nn.Module):
     for l in self.convs:
       x = l(x)
       x = F.leaky_relu(x, modules.LRELU_SLOPE)
-      fmap.append(x)
+      feat.append(x)
 
     x = self.conv_post(x)
-    fmap.append(x)
+    feat.append(x)
     x = torch.flatten(x, 1, -1)
 
-    return x, fmap
+    return x, feat
 
 
 class DiscriminatorS(torch.nn.Module):
@@ -828,29 +828,43 @@ class SynthesizerTrn(nn.Module):
       self.emb_g = nn.Embedding(n_speakers, gin_channels)
 
   def forward(self, x, x_lengths, y, y_lengths, sid=None):
+    # 对输入序列进行编码
     x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths)
 
     if self.n_speakers > 0:
+      # 获取一个说话人的嵌入 g 并对其进行变换，以便可以将其与后验编码器的输出相结合
       g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
     else:
       g = None
 
     z, m_q, logs_q, y_mask = self.posterior_encoder(y, y_lengths, g=g)
+    # 通过 Spline Flow 将输出 z 从后验分布转换为先验分布
     z_p = self.flow(z, y_mask, g=g)
 
+    # 计算注意力分布。此部分使用负交叉熵损失来计算注意力分布，以便在生成语音时自动学习对齐模式。
+    # 计算了4个不同的贡献，然后将它们相加以获得最终负交叉熵损失。
+    # 注意分布在这里被计算并返回。
     with torch.no_grad():
       # negative cross-entropy
-      s_p_sq_r = torch.exp(-2 * logs_p)  # [b, d, t]
-      neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)  # [b, 1, t_s]
-      neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)  # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
-      neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))  # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
-      neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)  # [b, 1, t_s]
+      # [b, d, t]
+      s_p_sq_r = torch.exp(-2 * logs_p)
+      # [b, 1, t_s]
+      neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
+      # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
+      neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
+      # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
+      neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
+      # [b, 1, t_s]
+      neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
       neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
 
       attn_mask = torch.unsqueeze(x_mask, 2) * torch.unsqueeze(y_mask, -1)
       attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
     w = attn.sum(2)
+    # 根据注意力分布计算权重向量，以调整 x 序列的持续时间。
+    # 如果使用 Soft DTW，则计算一个序列的持续时间，
+    # 否则计算一个标量损失，用于评估所生成语音的质量。
     if self.use_sdp:
       l_length = self.duration_predictor(x, x_mask, w, g=g)
       l_length = l_length / torch.sum(x_mask)
@@ -860,11 +874,16 @@ class SynthesizerTrn(nn.Module):
       l_length = torch.sum((logw - logw_) ** 2, [1, 2]) / torch.sum(x_mask)  # for averaging
 
     # expand prior
+    # 使用注意力分布对先验分布的均值和方差进行加权，以获得特定时间步的平均均值和方差，从而用于音频生成
     m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
     logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
+    # 随机选择一个小的时间片段 z_slice 和一个对应的 ID 序列 ids_slice，
+    # 并将它们传递给波形解码器 waveform_decoder，用于生成音频
     z_slice, ids_slice = commons.rand_slice_segments(z, y_lengths, self.segment_size)
     o = self.waveform_decoder(z_slice, g=g)
+    # 返回生成的音频 o，持续时间的损失 l_length，注意力分布 attn，
+    # 随机选择的时间片段的 ID 序列 ids_slice，以及用于将来计算注意力的 x_mask 和 `y
     return o, l_length, attn, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
   def infer(self, x, x_lengths, sid=None, noise_scale=1, length_scale=1, noise_scale_w=1., max_len=None):
@@ -887,8 +906,10 @@ class SynthesizerTrn(nn.Module):
     attn_mask = torch.unsqueeze(x_mask, 2) * torch.unsqueeze(y_mask, -1)
     attn = commons.generate_path(w_ceil, attn_mask)
 
-    m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)  # [b, t', t], [b, t, d] -> [b, d, t']
-    logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)  # [b, t', t], [b, t, d] -> [b, d, t']
+    # [b, t', t], [b, t, d] -> [b, d, t']
+    m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
+    # [b, t', t], [b, t, d] -> [b, d, t']
+    logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
     z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
     z = self.flow(z_p, y_mask, g=g, reverse=True)

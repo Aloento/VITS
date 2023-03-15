@@ -537,7 +537,7 @@ class ConvFlow(nn.Module):
     self.convs = DDSConv(filter_channels, kernel_size, n_layers, p_dropout=0.)
     self.proj = nn.Conv1d(filter_channels, self.half_channels * (num_bins * 3 - 1), 1)
     self.proj.weight.data.zero_()
-    self.proj.bias.data.zero_()
+    self.proj.bias.data.zero_()  # type: ignore
 
   def forward(self, x, x_mask, g=None, reverse=False):
     x0, x1 = torch.split(x, [self.half_channels] * 2, 1)
