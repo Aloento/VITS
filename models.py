@@ -423,7 +423,7 @@ class PosteriorEncoder(nn.Module):
     self.gin_channels = gin_channels
 
     self.pre = nn.Conv1d(in_channels, hidden_channels, 1)
-    self.enc = modules.WN(
+    self.enc = modules.WaveNet(
       hidden_channels,
       kernel_size,
       dilation_rate,
@@ -745,12 +745,12 @@ class SynthesizerTrn(nn.Module):
     :param n_layers: 编码器和解码器中的卷积层数量
     :param kernel_size: 卷积核的大小
     :param p_dropout: dropout概率
-    :param resblock_type: 是否使用残差块
-    :param resblock_kernel_sizes: 残差块中的卷积核大小
-    :param resblock_dilation_sizes: 残差块中的空洞卷积核大小
-    :param upsample_rates: 上采样率
-    :param upsample_initial_channel: 上采样前的通道数
-    :param upsample_kernel_sizes: 上采样层中的卷积核大小
+    :param resblock_type: ResBlock的类型。'1'或'2'
+    :param resblock_kernel_sizes: 每个ResBlock的内核大小的列表
+    :param resblock_dilation_sizes: 每个ResBlock中每个层的膨胀值的列表
+    :param upsample_rates: 每个上采样层的上采样因子（步幅）
+    :param upsample_initial_channel: 第一层上采样的通道数。每个连续的上采样层将其除以2
+    :param upsample_kernel_sizes: 每个转置卷积的内核大小的列表
     :param n_speakers: 说话人的数量（对于单说话人语音合成为0）
     :param gin_channels: 全局条件嵌入的大小
     :param use_sdp: 是否使用随机持续时间预测器

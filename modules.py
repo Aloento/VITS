@@ -44,41 +44,6 @@ class LayerNorm(nn.Module):
     return x.transpose(1, -1)
 
 
-class ConvReluNorm(nn.Module):
-  def __init__(self, in_channels, hidden_channels, out_channels, kernel_size, n_layers, p_dropout):
-    super().__init__()
-    self.in_channels = in_channels
-    self.hidden_channels = hidden_channels
-    self.out_channels = out_channels
-    self.kernel_size = kernel_size
-    self.n_layers = n_layers
-    self.p_dropout = p_dropout
-    assert n_layers > 1, "Number of layers should be larger than 0."
-
-    self.conv_layers = nn.ModuleList()
-    self.norm_layers = nn.ModuleList()
-    self.conv_layers.append(nn.Conv1d(in_channels, hidden_channels, kernel_size, padding=kernel_size // 2))
-    self.norm_layers.append(LayerNorm(hidden_channels))
-    self.relu_drop = nn.Sequential(
-      nn.ReLU(),
-      nn.Dropout(p_dropout))
-    for _ in range(n_layers - 1):
-      self.conv_layers.append(nn.Conv1d(hidden_channels, hidden_channels, kernel_size, padding=kernel_size // 2))
-      self.norm_layers.append(LayerNorm(hidden_channels))
-    self.proj = nn.Conv1d(hidden_channels, out_channels, 1)
-    self.proj.weight.data.zero_()
-    self.proj.bias.data.zero_()
-
-  def forward(self, x, x_mask):
-    x_org = x
-    for i in range(self.n_layers):
-      x = self.conv_layers[i](x * x_mask)
-      x = self.norm_layers[i](x)
-      x = self.relu_drop(x)
-    x = x_org + self.proj(x)
-    return x * x_mask
-
-
 class DDSConv(nn.Module):
   """
   Dilated and Depth-Separable Convolution
@@ -140,7 +105,7 @@ class DDSConv(nn.Module):
     return x * x_mask
 
 
-class WN(torch.nn.Module):
+class WaveNet(torch.nn.Module):
   def __init__(
       self,
       hidden_channels,
@@ -168,7 +133,7 @@ class WN(torch.nn.Module):
     """
 
     assert kernel_size % 2 == 1
-    super(WN, self).__init__()
+    super(WaveNet, self).__init__()
 
     self.hidden_channels = hidden_channels
     self.kernel_size = kernel_size,
@@ -247,41 +212,111 @@ class WN(torch.nn.Module):
 
 
 class ResBlock1(torch.nn.Module):
-  def __init__(self, channels, kernel_size=3, dilation=(1, 3, 5)):
+  def __init__(self, channels: int, kernel_size=3, dilation=(1, 3, 5)):
+    """
+    Residual Block 类型 1。它在每个卷积块中有 3 个卷积层
+
+    Network::
+
+        x -> lrelu -> conv1_1 -> conv1_2 -> conv1_3 -> z -> lrelu -> conv2_1 -> conv2_2 -> conv2_3 -> o -> + -> o
+        |--------------------------------------------------------------------------------------------------|
+
+    :param channels: 卷积层的隐藏通道数
+    :param kernel_size: 每层卷积滤波器的大小
+    :param dilation: 每个卷积块中每个卷积层的扩张值的列表
+    """
+
     super(ResBlock1, self).__init__()
+
     self.convs1 = nn.ModuleList([
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
-                         padding=get_padding(kernel_size, dilation[0]))),
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[1],
-                         padding=get_padding(kernel_size, dilation[1]))),
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[2],
-                         padding=get_padding(kernel_size, dilation[2])))
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[0],
+          padding=get_padding(kernel_size, dilation[0])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[1],
+          padding=get_padding(kernel_size, dilation[1])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[2],
+          padding=get_padding(kernel_size, dilation[2])
+        )
+      )
     ])
     self.convs1.apply(init_weights)
 
     self.convs2 = nn.ModuleList([
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                         padding=get_padding(kernel_size, 1))),
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                         padding=get_padding(kernel_size, 1))),
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                         padding=get_padding(kernel_size, 1)))
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size, 1, dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      )
     ])
     self.convs2.apply(init_weights)
 
-  def forward(self, x, x_mask=None):
+  def forward(self, x: Tensor, x_mask=None):
+    """
+    x: [B, C, T]
+    """
+
     for c1, c2 in zip(self.convs1, self.convs2):
       xt = F.leaky_relu(x, LRELU_SLOPE)
+
       if x_mask is not None:
         xt = xt * x_mask
+
       xt = c1(xt)
       xt = F.leaky_relu(xt, LRELU_SLOPE)
+
       if x_mask is not None:
         xt = xt * x_mask
+
       xt = c2(xt)
       x = xt + x
+
     if x_mask is not None:
       x = x * x_mask
+
     return x
 
   def remove_weight_norm(self):
@@ -292,25 +327,58 @@ class ResBlock1(torch.nn.Module):
 
 
 class ResBlock2(torch.nn.Module):
-  def __init__(self, channels, kernel_size=3, dilation=(1, 3)):
+  def __init__(self, channels: int, kernel_size=3, dilation=(1, 3)):
+    """
+    Residual Block Type 1是一个带有3个卷积层的残差块。
+
+    Network::
+
+        x -> lrelu -> conv1-> -> z -> lrelu -> conv2-> o -> + -> o
+        |---------------------------------------------------|
+
+    :param channels: 卷积层中隐藏通道的数量
+    :param kernel_size: 每层卷积过滤器的大小
+    :param dilation: 残差块中每个卷积层的膨胀值列表
+    """
+
     super(ResBlock2, self).__init__()
     self.convs = nn.ModuleList([
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
-                         padding=get_padding(kernel_size, dilation[0]))),
-      weight_norm(Conv1d(channels, channels, kernel_size, 1, dilation=dilation[1],
-                         padding=get_padding(kernel_size, dilation[1])))
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[0],
+          padding=get_padding(kernel_size, dilation[0])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[1],
+          padding=get_padding(kernel_size, dilation[1])
+        )
+      )
     ])
     self.convs.apply(init_weights)
 
   def forward(self, x, x_mask=None):
     for c in self.convs:
       xt = F.leaky_relu(x, LRELU_SLOPE)
+
       if x_mask is not None:
         xt = xt * x_mask
+
       xt = c(xt)
       x = xt + x
+
     if x_mask is not None:
       x = x * x_mask
+
     return x
 
   def remove_weight_norm(self):
@@ -332,6 +400,7 @@ class Log(nn.Module):
 class Flip(nn.Module):
   def forward(self, x, *args, reverse=False, **kwargs):
     x = torch.flip(x, [1])
+
     if not reverse:
       logdet = torch.zeros(x.size(0)).to(dtype=x.dtype, device=x.device)
       return x, logdet
@@ -340,7 +409,12 @@ class Flip(nn.Module):
 
 
 class ElementwiseAffine(nn.Module):
-  def __init__(self, channels):
+  def __init__(self, channels: int):
+    """
+    基于元素的仿射变换，类似于不使用整体统计的批归一化的替代方法。
+    :param channels: 输入张量的通道数
+    """
+
     super().__init__()
     self.channels = channels
     self.m = nn.Parameter(torch.zeros(channels, 1))
@@ -379,14 +453,23 @@ class ResidualCouplingLayer(nn.Module):
     self.half_channels = channels // 2
     self.mean_only = mean_only
 
+    # input layer
     self.pre = nn.Conv1d(self.half_channels, hidden_channels, 1)
-    self.enc = WN(hidden_channels, kernel_size, dilation_rate, n_layers, p_dropout=p_dropout, gin_channels=gin_channels)
+    # coupling layers
+    self.enc = WaveNet(
+      hidden_channels,
+      kernel_size,
+      dilation_rate,
+      n_layers,
+      p_dropout=p_dropout,
+      gin_channels=gin_channels
+    )
 
     # 输出层
     # 初始化最后一层为0，使得仿射耦合层在一开始什么都不做，这有助于训练的稳定性
     self.post = nn.Conv1d(hidden_channels, self.half_channels * (2 - mean_only), 1)
     self.post.weight.data.zero_()
-    self.post.bias.data.zero_()
+    self.post.bias.data.zero_()  # type: ignore
 
   def forward(self, x: Tensor, x_mask: Tensor, g: Optional[Tensor] = None, reverse=False):
     """
@@ -420,7 +503,27 @@ class ResidualCouplingLayer(nn.Module):
 
 
 class ConvFlow(nn.Module):
-  def __init__(self, in_channels, filter_channels, kernel_size, n_layers, num_bins=10, tail_bound=5.0):
+  def __init__(
+      self,
+      in_channels: int,
+      filter_channels: int,
+      kernel_size: int,
+      n_layers: int,
+      num_bins=10,
+      tail_bound=5.0
+  ):
+    """
+    Dilated depth separable convolutional based spline flow.
+    使用扩张深度可分离卷积实现
+
+    :param in_channels: 输入张量的通道数
+    :param filter_channels: 网络中的通道数
+    :param kernel_size: 卷积核大小
+    :param n_layers: 卷积层数
+    :param num_bins: 样条的数量
+    :param tail_bound: PRQT的尾部界限
+    """
+
     super().__init__()
     self.in_channels = in_channels
     self.filter_channels = filter_channels
@@ -449,14 +552,15 @@ class ConvFlow(nn.Module):
     unnormalized_heights = h[..., self.num_bins:2 * self.num_bins] / math.sqrt(self.filter_channels)
     unnormalized_derivatives = h[..., 2 * self.num_bins:]
 
-    x1, logabsdet = piecewise_rational_quadratic_transform(x1,
-                                                           unnormalized_widths,
-                                                           unnormalized_heights,
-                                                           unnormalized_derivatives,
-                                                           inverse=reverse,
-                                                           tails='linear',
-                                                           tail_bound=self.tail_bound
-                                                           )
+    x1, logabsdet = piecewise_rational_quadratic_transform(
+      x1,
+      unnormalized_widths,
+      unnormalized_heights,
+      unnormalized_derivatives,
+      inverse=reverse,
+      tails='linear',
+      tail_bound=self.tail_bound
+    )
 
     x = torch.cat([x0, x1], 1) * x_mask
     logdet = torch.sum(logabsdet * x_mask, [1, 2])
