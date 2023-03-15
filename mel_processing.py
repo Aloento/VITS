@@ -95,8 +95,16 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
   # 其中 channel 是 STFT 的通道数，通常为 1（表示单声道音频），
   # freq 是 STFT 的频率通道数，time 是 STFT 的时间帧数。
   # complex 是每个频率通道上的复数值，表示每个时间帧上的幅度和相位。
-  spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[wnsize_dtype_device],
-                    center=center, pad_mode='reflect', normalized=False, onesided=True)
+  spec = torch.stft(
+    y, n_fft,
+    hop_length=hop_size,
+    win_length=win_size,
+    window=hann_window[wnsize_dtype_device],
+    center=center,
+    pad_mode='reflect',
+    normalized=False,
+    onesided=True
+  )
 
   # 计算了每个时间步的频率幅度的平方和，并对这个和加上一个极小值以防止被零整除，然后再对它们进行开方。
   # 最终，它生成一个只包含频率幅度信息的张量，表示为频谱图
@@ -137,7 +145,6 @@ def spec_to_mel_torch(spec, n_fft, num_mels, sampling_rate, fmin, fmax):
 def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=False):
   """
   从音频信号计算Mel spectrogram
-  TODO：合并到上面两个方法中
 
   :param y: 输入的音频信号，作为一个1维张量
   :param n_fft: FFT大小
@@ -174,8 +181,16 @@ def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size,
     int((n_fft - hop_size) / 2), int((n_fft - hop_size) / 2)), mode='reflect')
   y = y.squeeze(1)
 
-  spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[wnsize_dtype_device],
-                    center=center, pad_mode='reflect', normalized=False, onesided=True)
+  spec = torch.stft(
+    y, n_fft,
+    hop_length=hop_size,
+    win_length=win_size,
+    window=hann_window[wnsize_dtype_device],
+    center=center,
+    pad_mode='reflect',
+    normalized=False,
+    onesided=True
+  )
 
   spec = torch.sqrt(spec.pow(2).sum(-1) + 1e-6)
 
