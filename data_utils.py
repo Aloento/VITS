@@ -73,7 +73,7 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
     lengths = []
 
     # 遍历输入数据中的每个音频文件和对应的文本信息
-    for audiopath, spk, lang, text in self.audiopaths_sid_text:
+    for audiopath, spk, text, lang in self.audiopaths_sid_text:
       # 判断文本长度是否在给定范围内
       if self.min_text_len <= len(text) <= self.max_text_len:
         audiopath = os.path.join(self.data_path, audiopath)
@@ -88,7 +88,7 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
           continue
 
         # 将这个音频和文本对加入一个新的列表，并计算该音频对应的长度（单位是以采样点数为基础的帧数）
-        audiopaths_sid_text_new.append([audiopath, spk, lang, text])
+        audiopaths_sid_text_new.append([audiopath, spk, text, lang])
         lengths.append(os.path.getsize(audiopath) // (2 * self.hop_length))
 
     self.audiopaths_sid_text = audiopaths_sid_text_new
@@ -96,7 +96,7 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
 
   def get_audio_text_speaker_pair(self, audiopath_sid_text, pt_run=False):
     # separate filename, speaker_id and text
-    audiopath, spk, lang, text = audiopath_sid_text
+    audiopath, spk, text, lang = audiopath_sid_text
     text, lang = self.get_text(text, lang)
 
     spec, ying, wav = self.get_audio(audiopath, pt_run)
