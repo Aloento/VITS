@@ -538,7 +538,7 @@ class HifiganGenerator(torch.nn.Module):
         else:
           z_sum += self.resblocks[i * self.num_kernels + j](x)
 
-      x = z_sum / self.num_kernels
+      x = z_sum / self.num_kernels  # type: ignore
 
     x = F.leaky_relu(x)
     x = self.conv_post(x)
@@ -621,27 +621,49 @@ class DiscriminatorS(torch.nn.Module):
 
 class MultiPeriodDiscriminator(torch.nn.Module):
   def __init__(self, use_spectral_norm=False):
+    """
+    鉴别器包装一个尺度鉴别器和一堆周期鉴别器
+
+    ::
+        waveform -> ScaleDiscriminator() -> scores_sd, feats_sd --> append() -> scores, feats
+               |--> MultiPeriodDiscriminator() -> scores_mpd, feats_mpd ^
+
+    :param use_spectral_norm: 如果为True，则切换到谱范数而不是权重范数
+    """
+
     super(MultiPeriodDiscriminator, self).__init__()
     periods = [2, 3, 5, 7, 11]
 
-    discs = [DiscriminatorS(use_spectral_norm=use_spectral_norm)]
-    discs = discs + [DiscriminatorP(i, use_spectral_norm=use_spectral_norm) for i in periods]  # type: ignore
-    self.discriminators = nn.ModuleList(discs)
+    self.discriminators = nn.ModuleList()
+    self.discriminators.append(DiscriminatorS(use_spectral_norm=use_spectral_norm))
+    self.discriminators.extend([DiscriminatorP(i, use_spectral_norm=use_spectral_norm) for i in periods])
 
   def forward(self, y, y_hat):
-    y_d_rs = []
-    y_d_gs = []
-    fmap_rs = []
-    fmap_gs = []
-    for i, d in enumerate(self.discriminators):
-      y_d_r, fmap_r = d(y)
-      y_d_g, fmap_g = d(y_hat)
-      y_d_rs.append(y_d_r)
-      y_d_gs.append(y_d_g)
-      fmap_rs.append(fmap_r)
-      fmap_gs.append(fmap_g)
+    """
+    :param y: 实际的音频波形
+    :param y_hat: 预测的音频波形
+    :return:
+      List[Tensor]: 判别器分数。
+      List[List[Tensor]]: 每个判别器的每个层的特征的列表。
+    """
 
-    return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+    # 实际和预测波形通过每个判别器后的分数
+    scores = []
+    hat_scores = []
+    # 每个判别器的每个层的特征
+    feats = []
+    hat_feats = []
+
+    for net in self.discriminators:
+      y_d_r, fmap_r = net(y)
+      scores.append(y_d_r)
+      feats.append(fmap_r)
+
+      y_d_g, fmap_g = net(y_hat)
+      hat_scores.append(y_d_g)
+      hat_feats.append(fmap_g)
+
+    return scores, hat_scores, feats, hat_feats
 
 
 class SynthesizerTrn(nn.Module):
