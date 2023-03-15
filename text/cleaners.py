@@ -1,100 +1,115 @@
-""" from https://github.com/keithito/tacotron """
-
-'''
-Cleaners are transformations that run over the input text at both training and eval time.
-
-Cleaners can be selected by passing a comma-delimited list of cleaner names as the "cleaners"
-hyperparameter. Some cleaners are English-specific. You'll typically want to use:
-  1. "english_cleaners" for English text
-  2. "transliteration_cleaners" for non-English text that can be transliterated to ASCII using
-     the Unidecode library (https://pypi.python.org/pypi/Unidecode)
-  3. "basic_cleaners" if you do not want to transliterate (in this case, you should also update
-     the symbols in symbols.py to match your data).
-'''
-
 import re
 
-from phonemizer import phonemize
-from unidecode import unidecode
-
-# Regular expression matching whitespace:
-_whitespace_re = re.compile(r'\s+')
-
-# List of (regular expression, replacement) pairs for abbreviations:
-_abbreviations = [(re.compile('\\b%s\\.' % x[0], re.IGNORECASE), x[1]) for x in [
-  ('mrs', 'misess'),
-  ('mr', 'mister'),
-  ('dr', 'doctor'),
-  ('st', 'saint'),
-  ('co', 'company'),
-  ('jr', 'junior'),
-  ('maj', 'major'),
-  ('gen', 'general'),
-  ('drs', 'doctors'),
-  ('rev', 'reverend'),
-  ('lt', 'lieutenant'),
-  ('hon', 'honorable'),
-  ('sgt', 'sergeant'),
-  ('capt', 'captain'),
-  ('esq', 'esquire'),
-  ('ltd', 'limited'),
-  ('col', 'colonel'),
-  ('ft', 'fort'),
-]]
+from text import cleaned_text_to_sequence
+from text.english import english_to_ipa
+from text.japanese import japanese_to_ipa
+from text.mandarin import chinese_to_ipa, pinyin_to_ipa
+from text.symbols import symbols
 
 
-def expand_abbreviations(text):
-  for regex, replacement in _abbreviations:
-    text = re.sub(regex, replacement, text)
-  return text
+def str_replace(data):
+  zh_tab = [";", ":", "\"", "'"]
+  eng_tab = [".", ",", ' ', " "]
+
+  for index in range(len(zh_tab)):
+    if zh_tab[index] in data:
+      data = data.replace(zh_tab[index], eng_tab[index])
+
+  return data
 
 
-def expand_numbers(text):
-  return normalize_numbers(text)
+def _clean_text(text):
+  cleaned_text, lang_seq = cje_cleaner(text)
+  cleaned_text = str_replace(cleaned_text)
+  cleaned_text, lang_seq = remove_invalid_text(cleaned_text, lang_seq)
+
+  return cleaned_text, lang_seq
 
 
-def lowercase(text):
-  return text.lower()
+def text_to_sequence(text):
+  cleaned_text, lang_seq = _clean_text(text)
+  return cleaned_text_to_sequence(cleaned_text), lang_seq
 
 
-def collapse_whitespace(text):
-  return re.sub(_whitespace_re, ' ', text)
+lang_map = {
+  "ZH": 0,
+  "JA": 1,
+  "EN": 3,
+  "P": 0,
+  "other": 5
+}
 
 
-def convert_to_ascii(text):
-  return unidecode(text)
+def cje_cleaner(text: str):
+  text = str_replace(text).replace("\"", '')
+  # find all text blocks enclosed in [JA], [ZH], [EN], [P]
+  original_text = text
+  blocks = re.finditer(r'\[(JA|ZH|EN|P)\](.*?)\[\1\]', text)
+  cleaned_text = ""
+  lang_seq = []
+  last_end = 0
+
+  for block in blocks:
+    start, end = block.span()
+    # insert text not enclosed in any blocks
+    ipa = original_text[last_end:start]
+    lang_seq += [lang_map["other"] for i in ipa]
+    cleaned_text += ipa
+    last_end = end
+    language = block.group(1)
+    text = block.group(2)
+
+    if language == 'P':
+      ipa = pinyin_to_ipa(text)
+      lang_seq += [lang_map[language] for i in ipa]
+      cleaned_text += ipa
+
+    if language == 'JA':
+      ipa = japanese_to_ipa(text)
+      lang_seq += [lang_map[language] for i in ipa]
+      cleaned_text += ipa
+
+    elif language == 'ZH':
+      ipa = chinese_to_ipa(text)
+      lang_seq += [lang_map[language] for i in ipa]
+      cleaned_text += ipa
+
+    elif language == 'EN':
+      ipa = english_to_ipa(text)
+      lang_seq += [lang_map[language] for i in ipa]
+      cleaned_text += ipa
+
+  ipa = original_text[last_end:]
+
+  lang_seq += [lang_map["other"] for i in ipa]
+  cleaned_text += ipa
+
+  assert len(cleaned_text) == len(lang_seq)
+  return cleaned_text, lang_seq
 
 
-def basic_cleaners(text):
-  '''Basic pipeline that lowercases and collapses whitespace without transliteration.'''
-  text = lowercase(text)
-  text = collapse_whitespace(text)
-  return text
+def remove_invalid_text(cleaned_text, lang_seq):
+  new_cleaned_text = ''
+  new_lang_seq = []
+
+  for symbol, la in zip(cleaned_text, lang_seq):
+    if symbol not in symbols:
+      print(cleaned_text)
+      print("skip:", symbol)
+      continue
+
+    if la == lang_map["other"]:
+      print("skip:", symbol)
+      continue
+
+    new_cleaned_text += symbol
+    new_lang_seq.append(la)
+
+  return new_cleaned_text, new_lang_seq
 
 
-def transliteration_cleaners(text):
-  '''Pipeline for non-English text that transliterates to ASCII.'''
-  text = convert_to_ascii(text)
-  text = lowercase(text)
-  text = collapse_whitespace(text)
-  return text
-
-
-def english_cleaners(text):
-  '''Pipeline for English text, including abbreviation expansion.'''
-  text = convert_to_ascii(text)
-  text = lowercase(text)
-  text = expand_abbreviations(text)
-  phonemes = phonemize(text, language='en-us', backend='espeak', strip=True)
-  phonemes = collapse_whitespace(phonemes)
-  return phonemes
-
-
-def english_cleaners2(text):
-  '''Pipeline for English text, including abbreviation expansion. + punctuation + stress'''
-  text = convert_to_ascii(text)
-  text = lowercase(text)
-  text = expand_abbreviations(text)
-  phonemes = phonemize(text, language='en-us', backend='espeak', strip=True, preserve_punctuation=True, with_stress=True)
-  phonemes = collapse_whitespace(phonemes)
-  return phonemes
+if __name__ == '__main__':
+  print(_clean_text("%[EN]Miss Radcliffe's letter had told him [EN]"))
+  print(_clean_text("[EN]Miss Radcliffe's letter had told him [EN]你好 hello[ZH]你好啊[ZH]"))
+  print(_clean_text("[P]ke3 % xian4 zai4 % jia4 ge2 % zhi2 jiang4 dao4 % yi2 wan4 duo1 $[P]"))
+  print(_clean_text("[ZH]可现在价格是降到一万多[ZH]"))
