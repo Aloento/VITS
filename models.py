@@ -555,11 +555,25 @@ class HifiganGenerator(torch.nn.Module):
 
 
 class DiscriminatorP(torch.nn.Module):
-  def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
+  def __init__(
+      self,
+      period,
+      kernel_size=5,
+      stride=3,
+      use_spectral_norm=False
+  ):
+    """
+    HiFiGAN 周期判别器
+    从输入波形中获取每一个Pth值，并应用一个堆叠的卷积。
+
+    if `period` is 2
+    `waveform = [1, 2, 3, 4, 5, 6 ...] --> [1, 3, 5 ... ] --> convs -> score, feat`
+    """
+
     super(DiscriminatorP, self).__init__()
     self.period = period
-    self.use_spectral_norm = use_spectral_norm
-    norm_f = weight_norm if use_spectral_norm == False else spectral_norm
+    norm_f = spectral_norm if use_spectral_norm else weight_norm
+
     self.convs = nn.ModuleList([
       norm_f(Conv2d(1, 32, (kernel_size, 1), (stride, 1), padding=(get_padding(kernel_size, 1), 0))),
       norm_f(Conv2d(32, 128, (kernel_size, 1), (stride, 1), padding=(get_padding(kernel_size, 1), 0))),
@@ -567,23 +581,34 @@ class DiscriminatorP(torch.nn.Module):
       norm_f(Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(get_padding(kernel_size, 1), 0))),
       norm_f(Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(get_padding(kernel_size, 1), 0))),
     ])
+
     self.conv_post = norm_f(Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
 
   def forward(self, x):
+    """
+    :param x: 输入的音频波形 [B, 1, T]
+    :return:
+      [Tensor]：每个样本在批处理中的判别器分数。
+      [List[Tensor]]：每个卷积层的特征列表。
+    """
+
     fmap = []
 
     # 1d to 2d
     b, c, t = x.shape
+
     if t % self.period != 0:  # pad first
       n_pad = self.period - (t % self.period)
       x = F.pad(x, (0, n_pad), "reflect")
       t = t + n_pad
+
     x = x.view(b, c, t // self.period, self.period)
 
     for l in self.convs:
       x = l(x)
       x = F.leaky_relu(x, modules.LRELU_SLOPE)
       fmap.append(x)
+
     x = self.conv_post(x)
     fmap.append(x)
     x = torch.flatten(x, 1, -1)
@@ -599,7 +624,7 @@ class DiscriminatorS(torch.nn.Module):
     """
 
     super(DiscriminatorS, self).__init__()
-    norm_f = weight_norm if use_spectral_norm == False else spectral_norm
+    norm_f = spectral_norm if use_spectral_norm else weight_norm
 
     self.convs = nn.ModuleList([
       norm_f(Conv1d(1, 16, 15, 1, padding=7)),
