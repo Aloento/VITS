@@ -22,6 +22,17 @@ def intersperse(lst, item):
   return result
 
 
+def intersperse_with_language_id(text, lang, item):
+  n = len(text)
+  _text = [item] * (2 * n + 1)
+  _lang = [None] * (2 * n + 1)
+  _text[1::2] = text
+  _lang[1::2] = lang
+  _lang[::2] = lang + [lang[-1]]
+
+  return _text, _lang
+
+
 def kl_divergence(m_p, logs_p, m_q, logs_q):
   """KL(P||Q)"""
   kl = (logs_q - logs_p) - 0.5
@@ -140,12 +151,12 @@ def sequence_mask(length: Tensor, max_length: Optional[int] = None):
   """
 
   if max_length is None:
-    max_length = length.max()
+    max_length = length.max()  # type: ignore
 
   # 生成一个从 0 到 max_length-1 的序列 x，然后将其重复 batch_size 次，形状变为 (batch_size, max_length)。
   # 接下来，将 length 扩展为形状为 (batch_size, 1) 的张量，并将其与 x 逐元素比较，
   # 生成一个布尔型张量，表示所有小于 length 中对应元素的位置为 True，否则为 False。
-  x = torch.arange(max_length, dtype=length.dtype, device=length.device)
+  x = torch.arange(max_length, dtype=length.dtype, device=length.device)  # type: ignore
   return x.unsqueeze(0) < length.unsqueeze(1)
 
 

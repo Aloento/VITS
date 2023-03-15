@@ -7,11 +7,12 @@ _symbol_to_id = {s: i for i, s in enumerate(symbols)}
 _id_to_symbol = {i: s for i, s in enumerate(symbols)}
 
 
-def text_to_sequence(text, cleaner_names):
+def text_to_sequence(text, lang, cleaner_names):
   """
   Converts a string of text to a sequence of IDs corresponding to the symbols in the text.
     Args:
       text: string to convert to a sequence
+      lang: language of the input text
       cleaner_names: names of the cleaner functions to run the text through
     Returns:
       List of integers corresponding to the symbols in the text
