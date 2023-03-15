@@ -18,7 +18,7 @@ def str_replace(data):
   return data
 
 
-def _clean_text(text):
+def clean_text(text):
   cleaned_text, lang_seq = cje_cleaner(text)
   cleaned_text = str_replace(cleaned_text)
   cleaned_text, lang_seq = remove_invalid_text(cleaned_text, lang_seq)
@@ -27,7 +27,7 @@ def _clean_text(text):
 
 
 def text_to_sequence(text):
-  cleaned_text, lang_seq = _clean_text(text)
+  cleaned_text, lang_seq = clean_text(text)
   return cleaned_text_to_sequence(cleaned_text), lang_seq
 
 
@@ -109,7 +109,7 @@ def remove_invalid_text(cleaned_text, lang_seq):
 
 
 if __name__ == '__main__':
-  print(_clean_text("%[EN]Miss Radcliffe's letter had told him [EN]"))
-  print(_clean_text("[EN]Miss Radcliffe's letter had told him [EN]你好 hello[ZH]你好啊[ZH]"))
-  print(_clean_text("[P]ke3 % xian4 zai4 % jia4 ge2 % zhi2 jiang4 dao4 % yi2 wan4 duo1 $[P]"))
-  print(_clean_text("[ZH]可现在价格是降到一万多[ZH]"))
+  print(clean_text("%[EN]Miss Radcliffe's letter had told him [EN]"))
+  print(clean_text("[EN]Miss Radcliffe's letter had told him [EN]你好 hello[ZH]你好啊[ZH]"))
+  print(clean_text("[P]ke3 % xian4 zai4 % jia4 ge2 % zhi2 jiang4 dao4 % yi2 wan4 duo1 $[P]"))
+  print(clean_text("[ZH]可现在价格是降到一万多[ZH]"))
