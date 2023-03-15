@@ -593,8 +593,14 @@ class DiscriminatorP(torch.nn.Module):
 
 class DiscriminatorS(torch.nn.Module):
   def __init__(self, use_spectral_norm=False):
+    """
+    HiFiGAN尺度判别器。通道大小与原始HiFiGAN不同
+    :param use_spectral_norm: 如果为`True`，则切换到谱归一化而不是权重归一化
+    """
+
     super(DiscriminatorS, self).__init__()
     norm_f = weight_norm if use_spectral_norm == False else spectral_norm
+
     self.convs = nn.ModuleList([
       norm_f(Conv1d(1, 16, 15, 1, padding=7)),
       norm_f(Conv1d(16, 64, 41, 4, groups=4, padding=20)),
@@ -603,20 +609,29 @@ class DiscriminatorS(torch.nn.Module):
       norm_f(Conv1d(1024, 1024, 41, 4, groups=256, padding=20)),
       norm_f(Conv1d(1024, 1024, 5, 1, padding=2)),
     ])
+
     self.conv_post = norm_f(Conv1d(1024, 1, 3, 1, padding=1))
 
   def forward(self, x):
-    fmap = []
+    """
+    :param x: 输入的音频波形
+    :return:
+      Tensor：判别器的得分。
+      List[Tensor]：卷积层的特征列表
+    """
+
+    feat = []
 
     for l in self.convs:
       x = l(x)
       x = F.leaky_relu(x, modules.LRELU_SLOPE)
-      fmap.append(x)
+      feat.append(x)
+
     x = self.conv_post(x)
-    fmap.append(x)
+    feat.append(x)
     x = torch.flatten(x, 1, -1)
 
-    return x, fmap
+    return x, feat
 
 
 class MultiPeriodDiscriminator(torch.nn.Module):
