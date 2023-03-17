@@ -747,6 +747,7 @@ class MultiPeriodDiscriminator(torch.nn.Module):
 
 
 # Start Avocodo
+
 class CoMBDBlock(torch.nn.Module):
   def __init__(
       self,
@@ -1434,16 +1435,16 @@ class SynthesizerTrn(nn.Module):
     z_yin, m_yin, logs_yin, yin_mask = self.pitch_encoder(ying, y_lengths, g=g)
     z_yin_crop, logs_yin_crop, m_yin_crop = self.crop_scope([z_yin, logs_yin, m_yin], scope_shift)
 
+    # yin dec loss
     yin_gt_crop, yin_gt_shifted_crop, yin_dec_crop, z_yin_crop_shifted, scope_shift = self.yin_decoder(
       z_yin, ying, yin_mask, g)
 
     z = torch.cat([z_spec, z_yin], dim=1)
     logs_q = torch.cat([logs_spec, logs_yin], dim=1)
     m_q = torch.cat([m_spec, m_yin], dim=1)
-    y_mask = spec_mask
 
     # 通过 Spline Flow 将输出 z_spec 从后验分布转换为先验分布
-    z_p = self.flow(z, y_mask, g=g)
+    z_p = self.flow(z, spec_mask, g=g)
 
     z_dec = torch.cat([z_spec, z_yin_crop], dim=1)
 

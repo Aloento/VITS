@@ -8,67 +8,107 @@ import sys
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf
 from scipy.io.wavfile import read
 
 MATPLOTLIB_FLAG = False
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(
+  stream=sys.stdout,
+  level=logging.INFO,
+  format='[%(levelname)s|%(filename)s:%(lineno)s][%(asctime)s] >>> %(message)s'
+)
 logger = logging
 
 
-def load_checkpoint(checkpoint_path, model, optimizer=None):
+def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g=None, optim_d=None):
   assert os.path.isfile(checkpoint_path)
+
   checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
   iteration = checkpoint_dict['iteration']
   learning_rate = checkpoint_dict['learning_rate']
-  if optimizer is not None:
-    optimizer.load_state_dict(checkpoint_dict['optimizer'])
-  saved_state_dict = checkpoint_dict['model']
+  config = checkpoint_dict['config']
+
+  if model_g is not None:
+    model_g, optim_g = load_model(
+      model_g,
+      checkpoint_dict['model_g'],
+      optim_g,
+      checkpoint_dict['optimizer_g'])
+
+  if model_d is not None:
+    model_d, optim_d = load_model(
+      model_d,
+      checkpoint_dict['model_d'],
+      optim_d,
+      checkpoint_dict['optimizer_d'])
+
+  if rank == 0:
+    logger.info(
+      "Loaded checkpoint '{}' (iteration {})".format(
+        checkpoint_path,
+        iteration
+      )
+    )
+
+  return model_g, model_d, optim_g, optim_d, learning_rate, iteration, config
+
+
+def load_model(model, model_state_dict, optim, optim_state_dict):
+  if optim is not None:
+    optim.load_state_dict(optim_state_dict)
+
   if hasattr(model, 'module'):
     state_dict = model.module.state_dict()
   else:
     state_dict = model.state_dict()
-  new_state_dict = {}
-  for k, v in state_dict.items():
-    try:
-      new_state_dict[k] = saved_state_dict[k]
-    except:
-      logger.info("%s is not in the checkpoint" % k)
-      new_state_dict[k] = v
+
+  for k, v in model_state_dict.items():
+    if k in state_dict and state_dict[k].size() == v.size():
+      state_dict[k] = v
+
   if hasattr(model, 'module'):
-    model.module.load_state_dict(new_state_dict)
+    model.module.load_state_dict(state_dict)
   else:
-    model.load_state_dict(new_state_dict)
-  logger.info("Loaded checkpoint '{}' (iteration {})".format(
-    checkpoint_path, iteration))
-  return model, optimizer, learning_rate, iteration
+    model.load_state_dict(state_dict)
+
+  return model, optim
 
 
-def save_checkpoint(model, optimizer, learning_rate, iteration, checkpoint_path):
-  logger.info("Saving model and optimizer state at iteration {} to {}".format(
-    iteration, checkpoint_path))
-  if hasattr(model, 'module'):
-    state_dict = model.module.state_dict()
-  else:
-    state_dict = model.state_dict()
-  torch.save({'model': state_dict,
-              'iteration': iteration,
-              'optimizer': optimizer.state_dict(),
-              'learning_rate': learning_rate}, checkpoint_path)
+def save_checkpoint(net_g, optim_g, net_d, optim_d, hps, epoch, learning_rate, save_path):
+  def get_state_dict(model):
+    if hasattr(model, 'module'):
+      state_dict = model.module.state_dict()
+    else:
+      state_dict = model.state_dict()
+    return state_dict
+
+  torch.save({
+    'model_g': get_state_dict(net_g),
+    'model_d': get_state_dict(net_d),
+    'optimizer_g': optim_g.state_dict(),
+    'optimizer_d': optim_d.state_dict(),
+    'config': str(hps),
+    'iteration': epoch,
+    'learning_rate': learning_rate
+  }, save_path)
 
 
 def summarize(writer, global_step, scalars={}, histograms={}, images={}, audios={}, audio_sampling_rate=22050):
   for k, v in scalars.items():
     writer.add_scalar(k, v, global_step)
+
   for k, v in histograms.items():
     writer.add_histogram(k, v, global_step)
+
   for k, v in images.items():
     writer.add_image(k, v, global_step, dataformats='HWC')
+
   for k, v in audios.items():
     writer.add_audio(k, v, global_step, audio_sampling_rate)
 
 
-def latest_checkpoint_path(dir_path, regex="G_*.pth"):
+def latest_checkpoint_path(dir_path, regex="*.pth"):
   f_list = glob.glob(os.path.join(dir_path, regex))
   f_list.sort(key=lambda f: int("".join(filter(str.isdigit, f))))
   x = f_list[-1]
@@ -78,18 +118,20 @@ def latest_checkpoint_path(dir_path, regex="G_*.pth"):
 
 def plot_spectrogram_to_numpy(spectrogram):
   global MATPLOTLIB_FLAG
+
   if not MATPLOTLIB_FLAG:
     import matplotlib
     matplotlib.use("Agg")
     MATPLOTLIB_FLAG = True
     mpl_logger = logging.getLogger('matplotlib')
     mpl_logger.setLevel(logging.WARNING)
+
   import matplotlib.pylab as plt
   import numpy as np
 
   fig, ax = plt.subplots(figsize=(10, 2))
-  im = ax.imshow(spectrogram, aspect="auto", origin="lower",
-                 interpolation='none')
+  im = ax.imshow(spectrogram, aspect="auto", origin="lower", interpolation='none')
+
   plt.colorbar(im, ax=ax)
   plt.xlabel("Frames")
   plt.ylabel("Channels")
@@ -99,27 +141,32 @@ def plot_spectrogram_to_numpy(spectrogram):
   data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
   data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
   plt.close()
+
   return data
 
 
 def plot_alignment_to_numpy(alignment, info=None):
   global MATPLOTLIB_FLAG
+
   if not MATPLOTLIB_FLAG:
     import matplotlib
     matplotlib.use("Agg")
     MATPLOTLIB_FLAG = True
     mpl_logger = logging.getLogger('matplotlib')
     mpl_logger.setLevel(logging.WARNING)
+
   import matplotlib.pylab as plt
   import numpy as np
 
   fig, ax = plt.subplots(figsize=(6, 4))
-  im = ax.imshow(alignment.transpose(), aspect='auto', origin='lower',
-                 interpolation='none')
+  im = ax.imshow(alignment.transpose(), aspect='auto', origin='lower', interpolation='none')
+
   fig.colorbar(im, ax=ax)
   xlabel = 'Decoder timestep'
+
   if info is not None:
     xlabel += '\n\n' + info
+
   plt.xlabel(xlabel)
   plt.ylabel('Encoder timestep')
   plt.tight_layout()
@@ -128,6 +175,7 @@ def plot_alignment_to_numpy(alignment, info=None):
   data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
   data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
   plt.close()
+
   return data
 
 
@@ -136,8 +184,20 @@ def load_wav_to_torch(full_path):
   使用read方法从音频文件中读取采样率和音频数据，并将数据类型转换为float32类型。
   然后，使用torch.FloatTensor方法将数据转换为PyTorch的FloatTensor类型，并返回数据和采样率。
   """
-  sampling_rate, data = read(full_path)
-  return torch.FloatTensor(data.astype(np.float32)), sampling_rate
+  sampling_rate, wav = read(full_path)
+
+  if len(wav.shape) == 2:
+    wav = wav[:, 0]
+
+  if wav.dtype == np.int16:
+    wav = wav / 32768.0
+  elif wav.dtype == np.int32:
+    wav = wav / 2147483648.0
+  elif wav.dtype == np.uint8:
+    wav = (wav - 128) / 128.0
+
+  wav = wav.astype(np.float32)
+  return torch.FloatTensor(wav), sampling_rate
 
 
 def load_filepaths_and_text(filename, split="|"):
@@ -146,52 +206,25 @@ def load_filepaths_and_text(filename, split="|"):
   return filepaths_and_text
 
 
-def get_hparams(init=True):
-  parser = argparse.ArgumentParser()
-  parser.add_argument('-c', '--config', type=str, default="./configs/base.json",
-                      help='JSON file for configuration')
-  parser.add_argument('-m', '--model', type=str, required=True,
-                      help='Model name')
-
-  args = parser.parse_args()
-  model_dir = os.path.join("./logs", args.model)
+def get_hparams(args, init=True):
+  config = OmegaConf.load(args.config)
+  hparams = HParams(**config)
+  model_dir = os.path.join(hparams.train.log_path, args.model)
 
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
+  hparams.model_name = args.model
+  hparams.model_dir = model_dir
+  config_save_path = os.path.join(model_dir, "config.yaml")
 
-  config_path = args.config
-  config_save_path = os.path.join(model_dir, "config.json")
   if init:
-    with open(config_path, "r") as f:
-      data = f.read()
-    with open(config_save_path, "w") as f:
-      f.write(data)
-  else:
-    with open(config_save_path, "r") as f:
-      data = f.read()
-  config = json.loads(data)
+    OmegaConf.save(config, config_save_path)
 
-  hparams = HParams(**config)
-  hparams.model_dir = model_dir
-  return hparams
-
-
-def get_hparams_from_dir(model_dir):
-  config_save_path = os.path.join(model_dir, "config.json")
-  with open(config_save_path, "r") as f:
-    data = f.read()
-  config = json.loads(data)
-
-  hparams = HParams(**config)
-  hparams.model_dir = model_dir
   return hparams
 
 
 def get_hparams_from_file(config_path):
-  with open(config_path, "r") as f:
-    data = f.read()
-  config = json.loads(data)
-
+  config = OmegaConf.load(config_path)
   hparams = HParams(**config)
   return hparams
 
@@ -230,16 +263,20 @@ def check_git_hash(model_dir):
 
 def get_logger(model_dir, filename="train.log"):
   global logger
+
   logger = logging.getLogger(os.path.basename(model_dir))
   logger.setLevel(logging.DEBUG)
 
   formatter = logging.Formatter("%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
+
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
+
   h = logging.FileHandler(os.path.join(model_dir, filename))
   h.setLevel(logging.DEBUG)
   h.setFormatter(formatter)
   logger.addHandler(h)
+
   return logger
 
 
