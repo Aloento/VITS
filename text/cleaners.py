@@ -53,9 +53,11 @@ def cje_cleaner(text: str):
 
   for block in blocks:
     start, end = block.span()
+
     # insert text not enclosed in any blocks
     ipa = original_text[last_end:start]
     lang_seq += [lang_map["other"] for i in ipa]
+
     cleaned_text += ipa
     last_end = end
     language = block.group(1)
@@ -96,11 +98,13 @@ def remove_invalid_text(cleaned_text, lang_seq):
 
   for symbol, la in zip(cleaned_text, lang_seq):
     if symbol not in symbols:
-      print("invalid skip:", symbol)
+      print("Invalid Symbol:", symbol)
+      print("In: ", cleaned_text)
       continue
 
     if la == lang_map["other"]:
-      print("invalid skip:", symbol)
+      print("Invalid Lang:", symbol)
+      print("In: ", cleaned_text)
       continue
 
     new_cleaned_text += symbol
