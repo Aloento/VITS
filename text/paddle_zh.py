@@ -113,7 +113,3 @@ def zh_to_phonemes(text):
   text = pu_symbol_replace(text)
   phones = frontend.get_phonemes(text)[0]
   return phones
-
-
-if __name__ == '__main__':
-  print(zh_to_bopomofo("替换标点为英文标点！"))

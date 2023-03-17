@@ -2,12 +2,12 @@ train:
   log_interval: 50   # step unit
   eval_interval: 400  # step unit
   save_interval: 200  # epoch unit: 50 for baseline / 500 for fine-tuning
-  seed: 1234
+  seed: 114514
   epochs: 7000
   learning_rate: 2e-4
   betas: [ 0.8, 0.99 ]
   eps: 1e-9
-  batch_size: 16
+  batch_size: 32
   fp16_run: True  #False
   lr_decay: 0.999875
   segment_size: 8192
@@ -22,11 +22,9 @@ train:
   keep_ckpts: 3
 
 data:
-  data_path: "dataset"
+  data_path: "filelists"
   training_files: "filelists/train.clr.csv"
   validation_files: "filelists/val.clr.csv"
-  languages: "ja"
-  text_cleaners: [ "cje_cleaner" ]
   sampling_rate: 22050
   filter_length: 1024
   hop_length: 256
@@ -35,7 +33,7 @@ data:
   mel_fmin: 0.0
   mel_fmax: null
   add_blank: True
-  speakers: [ "nen" ]
+  speakers: [ "0", "1", "2", "3", "4" ]
   persistent_workers: True
   midi_start: -5
   midi_end: 75

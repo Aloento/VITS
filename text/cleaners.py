@@ -42,9 +42,11 @@ lang_map = {
 
 def cje_cleaner(text: str):
   text = str_replace(text).replace("\"", '')
+
   # find all text blocks enclosed in [JA], [ZH], [EN], [P]
   original_text = text
   blocks = re.finditer(r'\[(JA|ZH|EN|P)\](.*?)\[\1\]', text)
+
   cleaned_text = ""
   lang_seq = []
   last_end = 0
@@ -105,10 +107,3 @@ def remove_invalid_text(cleaned_text, lang_seq):
     new_lang_seq.append(la)
 
   return new_cleaned_text, new_lang_seq
-
-
-if __name__ == '__main__':
-  print(clean_text("%[EN]Miss Radcliffe's letter had told him [EN]"))
-  print(clean_text("[EN]Miss Radcliffe's letter had told him [EN]你好 hello[ZH]你好啊[ZH]"))
-  print(clean_text("[P]ke3 % xian4 zai4 % jia4 ge2 % zhi2 jiang4 dao4 % yi2 wan4 duo1 $[P]"))
-  print(clean_text("[ZH]可现在价格是降到一万多[ZH]"))

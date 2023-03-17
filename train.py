@@ -18,7 +18,8 @@ import utils
 from data_utils import (
   TextAudioSpeakerLoader,
   TextAudioSpeakerCollate,
-  DistributedBucketSampler, create_spec
+  DistributedBucketSampler,
+  create_spec
 )
 from losses import (
   generator_loss,
@@ -166,7 +167,8 @@ def run(rank, num_gpus, hps, args):
     midi_start=hps.data.midi_start,
     midi_end=hps.data.midi_end,
     octave_range=hps.data.octave_range,
-    **hps.model).cuda(rank)
+    **hps.model
+  ).cuda(rank)
 
   net_d = AvocodoDiscriminator(hps.model.use_spectral_norm).cuda(rank)
 

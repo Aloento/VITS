@@ -138,8 +138,3 @@ def _clean_zh(text):
   text = re.sub('([sɹ]`[⁼ʰ]?)([→↓↑ ]+|$)', r'\1ɹ`\2', text).replace('ɻ', 'ɹ`')
   text = re.sub('(s[⁼ʰ]?)([→↓↑ ]+|$)', r'\1ɹ\2', text)
   return text
-
-
-if __name__ == '__main__':
-  print(chinese_to_ipa("嗯？什么东西…沉甸甸的…下午1:00，今天是2022/5/10"))
-  print(pinyin_to_ipa("pin1 yin1 zhen1 hao3 wan2"))

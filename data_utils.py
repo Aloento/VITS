@@ -21,13 +21,10 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
 
   def __init__(self, audiopaths_sid_text, hparams, pt_run=False):
     self.audiopaths_sid_text = load_filepaths_and_text(audiopaths_sid_text)
-    self.text_cleaners = hparams.text_cleaners
     self.sampling_rate = hparams.sampling_rate
     self.filter_length = hparams.filter_length
     self.hop_length = hparams.hop_length
     self.win_length = hparams.win_length
-
-    self.lang = hparams.languages
 
     self.add_blank = hparams.add_blank
     self.min_text_len = getattr(hparams, "min_text_len", 1)
