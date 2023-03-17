@@ -1265,7 +1265,7 @@ class SynthesizerTrn(nn.Module):
       n_layers: int,
       kernel_size: int,
       p_dropout: float,
-      resblock_type: str,
+      resblock: str,
       resblock_kernel_sizes: List[int],
       resblock_dilation_sizes: List[List[int]],
       upsample_rates: List[int],
@@ -1291,7 +1291,7 @@ class SynthesizerTrn(nn.Module):
     :param n_layers: 编码器和解码器中的卷积层数量
     :param kernel_size: 卷积核的大小
     :param p_dropout: dropout概率
-    :param resblock_type: ResBlock的类型。'1'或'2'
+    :param resblock: ResBlock的类型。'1'或'2'
     :param resblock_kernel_sizes: 每个ResBlock的内核大小的列表
     :param resblock_dilation_sizes: 每个ResBlock中每个层的膨胀值的列表
     :param upsample_rates: 每个上采样层的上采样因子（步幅）
@@ -1313,7 +1313,7 @@ class SynthesizerTrn(nn.Module):
     self.n_layers = n_layers
     self.kernel_size = kernel_size
     self.p_dropout = p_dropout
-    self.resblock = resblock_type
+    self.resblock = resblock
     self.resblock_kernel_sizes = resblock_kernel_sizes
     self.resblock_dilation_sizes = resblock_dilation_sizes
     self.upsample_rates = upsample_rates
@@ -1342,7 +1342,7 @@ class SynthesizerTrn(nn.Module):
     self.waveform_decoder = HifiganGenerator(
       inter_channels - yin_channels +
       yin_scope,
-      resblock_type,
+      resblock,
       resblock_kernel_sizes,
       resblock_dilation_sizes,
       upsample_rates,

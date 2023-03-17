@@ -47,14 +47,11 @@ def main(args):
   # 获取当前可用的GPU数量
   num_gpus = torch.cuda.device_count()
   # 获取配置
-  hps = utils.get_hparams()
+  hps = utils.get_hparams(args)
 
   # create spectrogram files
   create_spec(hps.data.training_files, hps.data)
   create_spec(hps.data.validation_files, hps.data)
-
-  if num_gpus == 1:
-    return run(0, 1, hps, args)
 
   # 用于在多个GPU之间进行通信
   os.environ['MASTER_ADDR'] = 'localhost'
@@ -96,18 +93,17 @@ def run(rank, num_gpus, hps, args):
     # 记录训练日志
     writer = SummaryWriter(log_dir=hps.model_dir)
 
-  if num_gpus > 1:
-    # 初始化进程组
-    # backend: 使用 NVIDIA 提供的通信库 NCCL 进行通信
-    # init_method: 使用环境变量的方式初始化进程组
-    # world_size: 进程组的总数
-    dist.init_process_group(
-      backend='nccl',
-      init_method='env://',
-      world_size=num_gpus,
-      rank=rank,
-      group_name=args.model
-    )
+  # 初始化进程组
+  # backend: 使用 NVIDIA 提供的通信库 NCCL 进行通信
+  # init_method: 使用环境变量的方式初始化进程组
+  # world_size: 进程组的总数
+  dist.init_process_group(
+    backend='gloo',
+    init_method='env://',
+    world_size=num_gpus,
+    rank=rank,
+    group_name=args.model
+  )
 
   # 设置随机数种子，使得每次运行代码时生成的随机数序列相同
   torch.manual_seed(hps.train.seed)
@@ -115,8 +111,10 @@ def run(rank, num_gpus, hps, args):
   torch.cuda.set_device(rank)
 
   # 从音频和文本文件中加载数据
-  train_dataset = TextAudioSpeakerLoader(hps.data.training_files, hps.data,
-                                         rank == 0 and args.initial_run)
+  train_dataset = TextAudioSpeakerLoader(
+    hps.data.training_files, hps.data,
+    rank == 0 and args.initial_run
+  )
   # 对数据进行采样
   train_sampler = DistributedBucketSampler(
     train_dataset,
@@ -158,6 +156,11 @@ def run(rank, num_gpus, hps, args):
       collate_fn=collate_fn,
       persistent_workers=True,
     )
+    logger.info('Training Started')
+  elif args.initial_run:
+    print(f'rank: {rank} is waiting...')
+
+  dist.barrier()
 
   net_g = SynthesizerTrn(
     len(symbols),
@@ -246,7 +249,7 @@ def run(rank, num_gpus, hps, args):
       outer_bar.update(1)
 
 
-def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, logger, writer):
+def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
   net_g, net_d = nets
   optim_g, optim_d = optims
 
@@ -760,14 +763,14 @@ if __name__ == "__main__":
     '-c',
     '--config',
     type=str,
-    default="./configs/default.yaml",
+    default="./configs/config_cje.yaml",
     help='Path to configuration file'
   )
   parser.add_argument(
     '-m',
     '--model',
     type=str,
-    required=True,
+    default="9Nine",
     help='Model name'
   )
   parser.add_argument(

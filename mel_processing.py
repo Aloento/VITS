@@ -104,7 +104,8 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
       center=center,
       pad_mode='reflect',
       normalized=False,
-      onesided=True
+      onesided=True,
+      return_complex=True
     )
 
   # 计算了每个时间步的频率幅度的平方和，并对这个和加上一个极小值以防止被零整除，然后再对它们进行开方。
