@@ -105,8 +105,9 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
       pad_mode='reflect',
       normalized=False,
       onesided=True,
-      return_complex=False
+      return_complex=True
     )
+    spec = torch.view_as_real(spec)
 
   # 计算了每个时间步的频率幅度的平方和，并对这个和加上一个极小值以防止被零整除，然后再对它们进行开方。
   # 最终，它生成一个只包含频率幅度信息的张量，表示为频谱图
@@ -194,8 +195,9 @@ def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size,
       pad_mode='reflect',
       normalized=False,
       onesided=True,
-      return_complex=False
+      return_complex=True
     )
+    spec = torch.view_as_real(spec)
 
   spec = torch.sqrt(spec.pow(2).sum(-1) + 1e-6)
 

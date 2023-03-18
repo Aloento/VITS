@@ -86,8 +86,6 @@ def run(rank, num_gpus, hps, args):
         num_gpus, hps.train.batch_size, hps.train.fp16_run)
     )
 
-    logger.debug(hps)
-
     # 检查代码仓库的版本信息是否与当前运行的代码一致
     utils.check_git_hash(hps.model_dir)
     # 记录训练日志
@@ -195,8 +193,8 @@ def run(rank, num_gpus, hps, args):
     eps=hps.train.eps
   )
 
-  net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
-  net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
+  net_g = DDP(net_g, device_ids=[rank])
+  net_d = DDP(net_d, device_ids=[rank])
 
   try:
     _, _, _, _, _, epoch_save, _ = utils.load_checkpoint(
@@ -473,10 +471,10 @@ def evaluate(hps, current_step, epoch, generator, eval_loader, writer):
       x = x.cuda(0, non_blocking=True),
       x_lengths = x_lengths.cuda(0, non_blocking=True)
 
-      spec, = spec.cuda(0, non_blocking=True)
+      spec = spec.cuda(0, non_blocking=True)
       spec_lengths = spec_lengths.cuda(0, non_blocking=True)
 
-      ying, = ying.cuda(0, non_blocking=True)
+      ying = ying.cuda(0, non_blocking=True)
       ying_lengths = ying_lengths.cuda(0, non_blocking=True)
 
       y = y.cuda(0, non_blocking=True)
