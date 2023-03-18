@@ -143,7 +143,7 @@ def run(rank, num_gpus, hps, args):
   if rank == 0:
     # 加载验证数据
     # 不会丢弃最后一个 batch
-    eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps.data)
+    eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps.data, args.initial_run)
     eval_loader = DataLoader(
       eval_dataset,
       num_workers=8,
@@ -422,7 +422,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
         print([global_step, loss_gen_all.item(), loss_disc_all.item(), lr])
 
       if global_step % hps.train.eval_interval == 0:
-        evaluate(hps, global_step, epoch, net_g, eval_loader, writer)
+        evaluate(hps, global_step, net_g, eval_loader, writer)
 
       if global_step % hps.train.save_interval == 0:
         utils.save_checkpoint(
@@ -450,7 +450,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
     global_step += 1
 
 
-def evaluate(hps, current_step, epoch, generator, eval_loader, writer):
+def evaluate(hps, current_step, generator, eval_loader, writer):
   generator.eval()
   n_sample = hps.train.n_sample
 
@@ -468,7 +468,7 @@ def evaluate(hps, current_step, epoch, generator, eval_loader, writer):
                     ying, ying_lengths, y, y_lengths, speakers,
                     tone) in enumerate(eval_loader):
 
-      x = x.cuda(0, non_blocking=True),
+      x = x.cuda(0, non_blocking=True)
       x_lengths = x_lengths.cuda(0, non_blocking=True)
 
       spec = spec.cuda(0, non_blocking=True)
