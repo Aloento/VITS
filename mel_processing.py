@@ -105,7 +105,7 @@ def spectrogram_torch(y, n_fft, hop_size, win_size, center=False):
       pad_mode='reflect',
       normalized=False,
       onesided=True,
-      return_complex=True
+      return_complex=False
     )
 
   # 计算了每个时间步的频率幅度的平方和，并对这个和加上一个极小值以防止被零整除，然后再对它们进行开方。
@@ -133,7 +133,7 @@ def spec_to_mel_torch(spec, n_fft, num_mels, sampling_rate, fmin, fmax):
   # 判断当前的数据类型和设备是否已经在mel_basis中存在对应的梅尔滤波器
   if fmax_dtype_device not in mel_basis:
     # 使用 librosa 库将线性频谱转换为梅尔频谱，返回一个梅尔滤波器组成的矩阵
-    mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+    mel = librosa_mel_fn(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin, fmax=fmax)
     mel_basis[fmax_dtype_device] = torch.from_numpy(mel).to(dtype=spec.dtype, device=spec.device)
 
   # 将输入的 spectrogram 与 mel-basis 矩阵相乘，得到 mel-spectrogram
@@ -172,7 +172,7 @@ def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size,
 
   # spec_to_mel_torch
   if fmax_dtype_device not in mel_basis:
-    mel = librosa_mel_fn(sampling_rate, n_fft, num_mels, fmin, fmax)
+    mel = librosa_mel_fn(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin, fmax=fmax)
     mel_basis[fmax_dtype_device] = torch.from_numpy(mel).to(dtype=y.dtype, device=y.device)
 
   # spectrogram_torch
@@ -193,7 +193,8 @@ def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size,
       center=center,
       pad_mode='reflect',
       normalized=False,
-      onesided=True
+      onesided=True,
+      return_complex=False
     )
 
   spec = torch.sqrt(spec.pow(2).sum(-1) + 1e-6)

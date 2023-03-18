@@ -297,7 +297,7 @@ class TextEncoder(nn.Module):
     # 根据输入 x_lengths 构造掩码矩阵 x_mask，
     # 用于将填充的位置的注意力权重设置为0，避免填充对注意力计算产生影响
     # 形状为 (batch_size, 1, sequence_length)
-    x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)  # [b, 1, t]
+    x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(1)), 1).to(x.dtype)  # [b, 1, t]
 
     # 对 x 进行转置，以适应下面 Encoder 层的输入形状
     # 将维度顺序从 (batch_size, sequence_length, hidden_channels)
@@ -1422,7 +1422,7 @@ class SynthesizerTrn(nn.Module):
 
   def forward(self, x, t, x_lengths, y, y_lengths, ying, ying_lengths, sid=None, scope_shift=0):
     # 对输入序列进行编码
-    x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths)
+    x, m_p, logs_p, x_mask = self.text_encoder(x, t, x_lengths)
 
     if self.n_speakers > 0:
       # 获取一个说话人的嵌入 g 并对其进行变换，以便可以将其与后验编码器的输出相结合
@@ -1494,7 +1494,7 @@ class SynthesizerTrn(nn.Module):
       z_dec_, torch.cat([y_lengths, y_lengths], dim=0), self.segment_size
     )
 
-    o_ = self.dec.hier_forward(z_slice, g=torch.cat([g, g], dim=0))
+    o_ = self.waveform_decoder.hier_forward(z_slice, g=torch.cat([g, g], dim=0))
 
     o = [torch.chunk(o_hier, 2, dim=0)[0] for o_hier in o_]
     # 返回生成的音频 o，持续时间的损失 l_length，注意力分布 attn，
@@ -1562,7 +1562,7 @@ class SynthesizerTrn(nn.Module):
     )
     z_yin_crop = self.crop_scope([z_yin], scope_shift)[0]
     z_crop = torch.cat([z_spec, z_yin_crop], dim=1)
-    o = self.dec((z_crop * y_mask)[:, :, :max_len], g=g)
+    o = self.waveform_decoder((z_crop * y_mask)[:, :, :max_len], g=g)
 
     return o, attn, y_mask, (z_crop, z, z_p, m_p, logs_p)
 
@@ -1690,7 +1690,7 @@ class SynthesizerTrn(nn.Module):
       g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
     else:
       g = None
-    return self.dec(decoder_inputs, g=g)
+    return self.waveform_decoder(decoder_inputs, g=g)
 
   def voice_conversion(self, y, y_lengths, sid_src, sid_tgt):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
