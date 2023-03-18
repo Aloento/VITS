@@ -96,7 +96,7 @@ def run(rank, num_gpus, hps, args):
   # init_method: 使用环境变量的方式初始化进程组
   # world_size: 进程组的总数
   dist.init_process_group(
-    backend='gloo',
+    backend='nccl',
     init_method='env://',
     world_size=num_gpus,
     rank=rank,
@@ -149,10 +149,9 @@ def run(rank, num_gpus, hps, args):
       num_workers=8,
       shuffle=False,
       batch_size=hps.train.batch_size,
-      pin_memory=False,
+      pin_memory=True,
       drop_last=False,
       collate_fn=collate_fn,
-      persistent_workers=True,
     )
     logger.info('Training Started')
   elif args.initial_run:

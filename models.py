@@ -553,7 +553,7 @@ class HifiganGenerator(torch.nn.Module):
       x = z_sum / self.num_kernels  # type: ignore
 
     x = F.leaky_relu(x)
-    x = self.conv_post[-1](x)
+    x = self.conv_posts[-1](x)
     x = torch.tanh(x)
 
     return x
