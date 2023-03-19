@@ -1,8 +1,9 @@
 from typing import Optional
 
+import torch
 from torch import nn, Tensor
 
-import modules
+from WaveNet import WaveNet
 
 
 class ResidualCouplingBlock(nn.Module):
@@ -53,7 +54,7 @@ class ResidualCouplingBlock(nn.Module):
     self.flows = nn.ModuleList()
     for i in range(n_flows):
       self.flows.append(
-        modules.ResidualCouplingLayer(
+        ResidualCouplingLayer(
           channels,
           hidden_channels,
           kernel_size,
@@ -63,7 +64,7 @@ class ResidualCouplingBlock(nn.Module):
           mean_only=True
         )
       )
-      self.flows.append(modules.Flip())
+      self.flows.append(Flip())
 
   def forward(self, x: Tensor, x_mask: Tensor, g: Optional[Tensor] = None, reverse=False):
     """
@@ -82,3 +83,86 @@ class ResidualCouplingBlock(nn.Module):
         x = flow(x, x_mask, g=g, reverse=reverse)
 
     return x
+
+
+class Flip(nn.Module):
+  def forward(self, x, *args, reverse=False, **kwargs):
+    x = torch.flip(x, [1])
+
+    if not reverse:
+      logdet = torch.zeros(x.size(0)).to(dtype=x.dtype, device=x.device)
+      return x, logdet
+    else:
+      return x
+
+
+class ResidualCouplingLayer(nn.Module):
+  def __init__(
+      self,
+      channels: int,
+      hidden_channels: int,
+      kernel_size: int,
+      dilation_rate: int,
+      n_layers: int,
+      p_dropout: int = 0,
+      gin_channels: int = 0,
+      mean_only=False
+  ):
+    assert channels % 2 == 0, "channels should be divisible by 2"
+    super().__init__()
+
+    self.channels = channels
+    self.hidden_channels = hidden_channels
+    self.kernel_size = kernel_size
+    self.dilation_rate = dilation_rate
+    self.n_layers = n_layers
+    self.half_channels = channels // 2
+    self.mean_only = mean_only
+
+    # input layer
+    self.pre = nn.Conv1d(self.half_channels, hidden_channels, 1)
+    # coupling layers
+    self.enc = WaveNet(
+      hidden_channels,
+      kernel_size,
+      dilation_rate,
+      n_layers,
+      p_dropout=p_dropout,
+      gin_channels=gin_channels
+    )
+
+    # 输出层
+    # 初始化最后一层为0，使得仿射耦合层在一开始什么都不做，这有助于训练的稳定性
+    self.post = nn.Conv1d(hidden_channels, self.half_channels * (2 - mean_only), 1)
+    self.post.weight.data.zero_()
+    self.post.bias.data.zero_()  # type: ignore
+
+  def forward(self, x: Tensor, x_mask: Tensor, g: Optional[Tensor] = None, reverse=False):
+    """
+    设置 reverse=True 用于推理。
+
+    :param x: :math:`[B, C, T]`
+    :param x_mask: :math:`[B, 1, T]`
+    :param g: :math:`[B, C, 1]`
+    """
+
+    x0, x1 = torch.split(x, [self.half_channels] * 2, 1)
+    h = self.pre(x0) * x_mask
+    h = self.enc(h, x_mask, g=g)
+    stats = self.post(h) * x_mask
+
+    if not self.mean_only:
+      m, logs = torch.split(stats, [self.half_channels] * 2, 1)
+    else:
+      m = stats
+      logs = torch.zeros_like(m)
+
+    if not reverse:
+      x1 = m + x1 * torch.exp(logs) * x_mask
+      x = torch.cat([x0, x1], 1)
+      logdet = torch.sum(logs, [1, 2])
+      return x, logdet
+    else:
+      x1 = (x1 - m) * torch.exp(-logs) * x_mask
+      x = torch.cat([x0, x1], 1)
+      return x

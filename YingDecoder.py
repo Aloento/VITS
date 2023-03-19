@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-import modules
+import WaveNet
 
 
 class YingDecoder(nn.Module):
@@ -30,7 +30,7 @@ class YingDecoder(nn.Module):
     self.yin_shift_range = yin_shift_range
 
     self.pre = nn.Conv1d(self.in_channels, hidden_channels, 1)
-    self.dec = modules.WaveNet(
+    self.dec = WaveNet.WaveNet(
       hidden_channels,
       kernel_size,
       dilation_rate,

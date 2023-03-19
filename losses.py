@@ -1,5 +1,4 @@
 import torch
-from torch.autograd import Function
 
 
 def feature_loss(fmap_r, fmap_g):
@@ -59,15 +58,3 @@ def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
   l = kl / torch.sum(z_mask)
 
   return l
-
-
-class ReverseLayerF(Function):
-  @staticmethod
-  def forward(ctx, x, alpha):
-    ctx.alpha = alpha
-    return x.view_as(x)
-
-  @staticmethod
-  def backward(ctx, grad_output):
-    output = grad_output.neg() * ctx.alpha
-    return output, None

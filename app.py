@@ -125,7 +125,7 @@ def parsearg():
     '-c',
     '--config',
     type=str,
-    default="./configs/config_cjke.yaml",
+    default="./configs/config_cje.yaml",
     help='Path to configuration file'
   )
   parser.add_argument(

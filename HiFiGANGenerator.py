@@ -5,8 +5,9 @@ from torch import nn, Tensor
 from torch.nn import Conv1d, ConvTranspose1d, functional as F
 from torch.nn.utils import weight_norm, remove_weight_norm
 
-import modules
-from commons import init_weights
+from commons import init_weights, get_padding
+
+LRELU_SLOPE = 0.1
 
 
 class HiFiGANGenerator(torch.nn.Module):
@@ -44,7 +45,7 @@ class HiFiGANGenerator(torch.nn.Module):
     self.num_upsamples = len(upsample_rates)
     # initial upsampling layers
     self.conv_pre = Conv1d(initial_channel, upsample_initial_channel, 7, 1, padding=3)
-    resblock = modules.ResBlock1 if resblock_type == '1' else modules.ResBlock2
+    resblock = ResBlock1 if resblock_type == '1' else ResBlock2
 
     # upsampling layers
     self.ups = nn.ModuleList()
@@ -92,7 +93,7 @@ class HiFiGANGenerator(torch.nn.Module):
       x = x + self.cond(g)
 
     for i in range(self.num_upsamples):
-      x = F.leaky_relu(x, modules.LRELU_SLOPE)
+      x = F.leaky_relu(x, LRELU_SLOPE)
       x = self.ups[i](x)
       z_sum = None
 
@@ -118,7 +119,7 @@ class HiFiGANGenerator(torch.nn.Module):
       x = x + self.cond(g)
 
     for i in range(self.num_upsamples):
-      x = F.leaky_relu(x, modules.LRELU_SLOPE)
+      x = F.leaky_relu(x, LRELU_SLOPE)
       x = self.ups[i](x)
       xs = None
 
@@ -144,3 +145,178 @@ class HiFiGANGenerator(torch.nn.Module):
       remove_weight_norm(l)
     for l in self.resblocks:
       l.remove_weight_norm()
+
+
+class ResBlock1(torch.nn.Module):
+  def __init__(self, channels: int, kernel_size=3, dilation=(1, 3, 5)):
+    """
+    Residual Block 类型 1。它在每个卷积块中有 3 个卷积层
+
+    Network::
+
+        x -> lrelu -> conv1_1 -> conv1_2 -> conv1_3 -> z -> lrelu -> conv2_1 -> conv2_2 -> conv2_3 -> o -> + -> o
+        |--------------------------------------------------------------------------------------------------|
+
+    :param channels: 卷积层的隐藏通道数
+    :param kernel_size: 每层卷积滤波器的大小
+    :param dilation: 每个卷积块中每个卷积层的扩张值的列表
+    """
+
+    super(ResBlock1, self).__init__()
+
+    self.convs1 = nn.ModuleList([
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[0],
+          padding=get_padding(kernel_size, dilation[0])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[1],
+          padding=get_padding(kernel_size, dilation[1])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[2],
+          padding=get_padding(kernel_size, dilation[2])
+        )
+      )
+    ])
+    self.convs1.apply(init_weights)
+
+    self.convs2 = nn.ModuleList([
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size, 1, dilation=1,
+          padding=get_padding(kernel_size, 1)
+        )
+      )
+    ])
+    self.convs2.apply(init_weights)
+
+  def forward(self, x: Tensor, x_mask=None):
+    """
+    x: [B, C, T]
+    """
+
+    for c1, c2 in zip(self.convs1, self.convs2):
+      xt = F.leaky_relu(x, LRELU_SLOPE)
+
+      if x_mask is not None:
+        xt = xt * x_mask
+
+      xt = c1(xt)
+      xt = F.leaky_relu(xt, LRELU_SLOPE)
+
+      if x_mask is not None:
+        xt = xt * x_mask
+
+      xt = c2(xt)
+      x = xt + x
+
+    if x_mask is not None:
+      x = x * x_mask
+
+    return x
+
+  def remove_weight_norm(self):
+    for l in self.convs1:
+      remove_weight_norm(l)
+    for l in self.convs2:
+      remove_weight_norm(l)
+
+
+class ResBlock2(torch.nn.Module):
+  def __init__(self, channels: int, kernel_size=3, dilation=(1, 3)):
+    """
+    Residual Block Type 1是一个带有3个卷积层的残差块。
+
+    Network::
+
+        x -> lrelu -> conv1-> -> z -> lrelu -> conv2-> o -> + -> o
+        |---------------------------------------------------|
+
+    :param channels: 卷积层中隐藏通道的数量
+    :param kernel_size: 每层卷积过滤器的大小
+    :param dilation: 残差块中每个卷积层的膨胀值列表
+    """
+
+    super(ResBlock2, self).__init__()
+    self.convs = nn.ModuleList([
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[0],
+          padding=get_padding(kernel_size, dilation[0])
+        )
+      ),
+      weight_norm(
+        Conv1d(
+          channels,
+          channels,
+          kernel_size,
+          1,
+          dilation=dilation[1],
+          padding=get_padding(kernel_size, dilation[1])
+        )
+      )
+    ])
+    self.convs.apply(init_weights)
+
+  def forward(self, x, x_mask=None):
+    for c in self.convs:
+      xt = F.leaky_relu(x, LRELU_SLOPE)
+
+      if x_mask is not None:
+        xt = xt * x_mask
+
+      xt = c(xt)
+      x = xt + x
+
+    if x_mask is not None:
+      x = x * x_mask
+
+    return x
+
+  def remove_weight_norm(self):
+    for l in self.convs:
+      remove_weight_norm(l)

@@ -6,7 +6,7 @@ import torch.utils
 from torch.utils.data import Dataset
 
 import commons
-from analysis import Pitch
+from Pitch import Pitch
 from mel_processing import spectrogram_torch
 from text import cleaned_text_to_sequence
 from utils import load_filepaths_and_text, load_wav_to_torch

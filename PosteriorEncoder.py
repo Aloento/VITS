@@ -3,8 +3,8 @@ from typing import Optional
 import torch
 from torch import nn, Tensor
 
+import WaveNet
 import commons
-import modules
 
 
 class PosteriorEncoder(nn.Module):
@@ -42,7 +42,7 @@ class PosteriorEncoder(nn.Module):
     self.gin_channels = gin_channels
 
     self.pre = nn.Conv1d(in_channels, hidden_channels, 1)
-    self.enc = modules.WaveNet(
+    self.enc = WaveNet.WaveNet(
       hidden_channels,
       kernel_size,
       dilation_rate,

@@ -6,7 +6,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 import commons
-from analysis import Pitch
+from Pitch import Pitch
 from DurationPredictor import DurationPredictor
 from StochasticDurationPredictor import StochasticDurationPredictor
 from TextEncoder import TextEncoder
