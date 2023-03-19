@@ -2,13 +2,13 @@ import math
 import os
 
 import torch
+from phaseaug.phaseaug import PhaseAug
 from torch.cuda.amp import autocast
 from torch.nn import functional as F
 from tqdm import tqdm
 
 import commons
 import utils
-from PhaseAug import PhaseAug
 from evaluate import evaluate
 from losses import discriminator_loss, kl_loss, feature_loss, generator_loss
 from mel_processing import spec_to_mel_torch, mel_spectrogram_torch
