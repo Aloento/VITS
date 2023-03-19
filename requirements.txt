@@ -11,7 +11,6 @@ Unidecode
 alias-free-torch
 phaseaug
 tqdm
-cmake
 pyopenjtalk
 jamo
 pypinyin
@@ -25,3 +24,4 @@ pypinyin_dict
 g2p_en
 g2pM
 omegaconf
+nvidia-cuda-runtime-cu11==11.8.89
