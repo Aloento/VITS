@@ -161,7 +161,9 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
       inner_bar.update(1)
       inner_bar.set_description(
         "Epoch {} | g {: .04f} d {: .04f}|".format(
-          epoch, loss_gen_all, loss_disc_all))
+          epoch, loss_gen_all, loss_disc_all)
+      )
+
       if global_step % hps.train.log_interval == 0:
         lr = optim_g.param_groups[0]['lr']
 

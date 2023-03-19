@@ -83,7 +83,7 @@ def run(rank, num_gpus, hps, args):
   # init_method: 使用环境变量的方式初始化进程组
   # world_size: 进程组的总数
   dist.init_process_group(
-    backend='nccl',
+    backend='gloo',
     init_method='env://',
     world_size=num_gpus,
     rank=rank,

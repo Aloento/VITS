@@ -2,6 +2,7 @@ import os
 
 import torch
 import torch.utils.data
+from tqdm import tqdm
 
 from mel_processing import spectrogram_torch
 from utils import load_wav_to_torch, load_filepaths_and_text
@@ -10,7 +11,7 @@ from utils import load_wav_to_torch, load_filepaths_and_text
 def create_spec(wav_paths_sid_text, hparams):
   wav_paths_sid_text = load_filepaths_and_text(wav_paths_sid_text)
 
-  for wav_path, _, _, _ in wav_paths_sid_text:
+  for wav_path, _, _, _ in tqdm(wav_paths_sid_text):
     wav_path = os.path.join(hparams.data_path, wav_path)
 
     if not os.path.exists(wav_path):

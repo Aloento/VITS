@@ -9,6 +9,7 @@
       <excludeFolder url="file://$MODULE_DIR$/monotonic_align/monotonic_align" />
       <excludeFolder url="file://$MODULE_DIR$/logs" />
       <excludeFolder url="file://$MODULE_DIR$/filelists/9nine" />
+      <excludeFolder url="file://$MODULE_DIR$/filelists/wav" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

@@ -1,7 +1,7 @@
 import argparse
 from os import path
 
-import tqdm
+from tqdm import tqdm
 
 import text.cleaners
 from utils import load_filepaths_and_text
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     print("START:", filelist)
     filepaths_and_text = load_filepaths_and_text(filelist)
 
-    for i in tqdm.tqdm(range(len(filepaths_and_text))):
+    for i in tqdm(range(len(filepaths_and_text))):
       original_text = filepaths_and_text[i][args.text_index]
       cleaned_text, lang_seq = text.cleaners.clean_text(original_text)
 
