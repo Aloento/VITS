@@ -5,7 +5,7 @@ import torch
 
 import commons
 import utils
-from models import (SynthesizerTrn)
+from SynthesizerTrn import SynthesizerTrn
 from text import cleaned_text_to_sequence
 from text.cleaners import clean_text
 from text.symbols import symbols

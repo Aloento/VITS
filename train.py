@@ -16,10 +16,8 @@ from create_spec import create_spec
 from DistributedBucketSampler import DistributedBucketSampler
 from TextAudioSpeakerCollate import TextAudioSpeakerCollate
 from TextAudioSpeakerLoader import TextAudioSpeakerLoader
-from models import (
-  SynthesizerTrn,
-  AvocodoDiscriminator
-)
+from Avocodo import AvocodoDiscriminator
+from SynthesizerTrn import SynthesizerTrn
 from text.symbols import symbols
 from train_and_evaluate import train_and_evaluate
 
