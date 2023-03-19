@@ -116,9 +116,10 @@ def run(rank, num_gpus, hps, args):
     train_dataset,
     num_workers=8,
     shuffle=False,
-    pin_memory=True,
+    pin_memory=False,
     collate_fn=collate_fn,
     batch_sampler=train_sampler,
+    persistent_workers=True
   )
 
   if rank == 0:
@@ -130,9 +131,10 @@ def run(rank, num_gpus, hps, args):
       num_workers=4,
       shuffle=False,
       batch_size=hps.train.batch_size,
-      pin_memory=True,
+      pin_memory=False,
       drop_last=False,
       collate_fn=collate_fn,
+      persistent_workers=True
     )
     logger.info('Training Started')
   elif args.initial_run:
