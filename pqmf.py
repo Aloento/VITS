@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
-
 # Copyright 2020 Tomoki Hayashi
 #  MIT License (https://opensource.org/licenses/MIT)
 
-"""Pseudo QMF modules."""
-'''
+"""
+Pseudo QMF modules.
 Copied from https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/layers/pqmf.py
-'''
+"""
 
 import numpy as np
 import torch
@@ -16,7 +14,8 @@ from scipy.signal.windows import kaiser
 
 
 def design_prototype_filter(taps=62, cutoff_ratio=0.142, beta=9.0):
-  """Design prototype filter for PQMF.
+  """
+  Design prototype filter for PQMF.
   This method is based on `A Kaiser window approach for the design of prototype
   filters of cosine modulated filterbanks`_.
   Args:
@@ -28,6 +27,7 @@ def design_prototype_filter(taps=62, cutoff_ratio=0.142, beta=9.0):
   .. _`A Kaiser window approach for the design of prototype filters of cosine modulated filterbanks`:
       https://ieeexplore.ieee.org/abstract/document/681427
   """
+
   # check the arguments are valid
   assert taps % 2 == 0, "The number of taps mush be even number."
   assert 0.0 < cutoff_ratio < 1.0, "Cutoff ratio must be > 0.0 and < 1.0."
@@ -48,14 +48,16 @@ def design_prototype_filter(taps=62, cutoff_ratio=0.142, beta=9.0):
 
 
 class PQMF(torch.nn.Module):
-  """PQMF module.
+  """
+  PQMF module.
   This module is based on `Near-perfect-reconstruction pseudo-QMF banks`_.
   .. _`Near-perfect-reconstruction pseudo-QMF banks`:
       https://ieeexplore.ieee.org/document/258122
   """
 
   def __init__(self, subbands=4, taps=62, cutoff_ratio=0.142, beta=9.0):
-    """Initilize PQMF module.
+    """
+    Initilize PQMF module.
     The cutoff_ratio and beta parameters are optimized for #subbands = 4.
     See dicussion in https://github.com/kan-bayashi/ParallelWaveGAN/issues/195.
     Args:
@@ -75,21 +77,21 @@ class PQMF(torch.nn.Module):
           2
           * h_proto
           * np.cos(
-        (2 * k + 1)
-        * (np.pi / (2 * subbands))
-        * (np.arange(taps + 1) - (taps / 2))
-        + (-1) ** k * np.pi / 4
-      )
+            (2 * k + 1)
+            * (np.pi / (2 * subbands))
+            * (np.arange(taps + 1) - (taps / 2))
+            + (-1) ** k * np.pi / 4
+          )
       )
       h_synthesis[k] = (
           2
           * h_proto
           * np.cos(
-        (2 * k + 1)
-        * (np.pi / (2 * subbands))
-        * (np.arange(taps + 1) - (taps / 2))
-        - (-1) ** k * np.pi / 4
-      )
+            (2 * k + 1)
+            * (np.pi / (2 * subbands))
+            * (np.arange(taps + 1) - (taps / 2))
+            - (-1) ** k * np.pi / 4
+          )
       )
 
     # convert to tensor
@@ -102,8 +104,10 @@ class PQMF(torch.nn.Module):
 
     # filter for downsampling & upsampling
     updown_filter = torch.zeros((subbands, subbands, subbands)).float()
+
     for k in range(subbands):
       updown_filter[k, k, 0] = 1.0
+
     self.register_buffer("updown_filter", updown_filter)
     self.subbands = subbands
 
@@ -111,7 +115,8 @@ class PQMF(torch.nn.Module):
     self.pad_fn = torch.nn.ConstantPad1d(taps // 2, 0.0)
 
   def analysis(self, x):
-    """Analysis with PQMF.
+    """
+    Analysis with PQMF.
     Args:
         x (Tensor): Input tensor (B, 1, T).
     Returns:
@@ -121,7 +126,8 @@ class PQMF(torch.nn.Module):
     return F.conv1d(x, self.updown_filter, stride=self.subbands)
 
   def synthesis(self, x):
-    """Synthesis with PQMF.
+    """
+    Synthesis with PQMF.
     Args:
         x (Tensor): Input tensor (B, subbands, T // subbands).
     Returns:
