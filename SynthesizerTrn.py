@@ -6,13 +6,13 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 import commons
-from Pitch import Pitch
 from DurationPredictor import DurationPredictor
+from HiFiGANGenerator import HiFiGANGenerator
+from Pitch import Pitch
+from PosteriorEncoder import PosteriorEncoder
+from ResidualCouplingBlock import ResidualCouplingBlock
 from StochasticDurationPredictor import StochasticDurationPredictor
 from TextEncoder import TextEncoder
-from ResidualCouplingBlock import ResidualCouplingBlock
-from PosteriorEncoder import PosteriorEncoder
-from HiFiGANGenerator import HiFiGANGenerator
 from YingDecoder import YingDecoder
 from monotonic_align import maximum_path
 

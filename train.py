@@ -12,12 +12,12 @@ from torch.utils.tensorboard import SummaryWriter  # 用于可视化训练和评
 from tqdm import tqdm
 
 import utils
-from create_spec import create_spec
+from Avocodo import AvocodoDiscriminator
 from DistributedBucketSampler import DistributedBucketSampler
+from SynthesizerTrn import SynthesizerTrn
 from TextAudioSpeakerCollate import TextAudioSpeakerCollate
 from TextAudioSpeakerLoader import TextAudioSpeakerLoader
-from Avocodo import AvocodoDiscriminator
-from SynthesizerTrn import SynthesizerTrn
+from create_spec import create_spec
 from text.symbols import symbols
 from train_and_evaluate import train_and_evaluate
 

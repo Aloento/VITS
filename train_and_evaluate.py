@@ -9,9 +9,9 @@ from tqdm import tqdm
 
 import commons
 import utils
+from evaluate import evaluate
 from losses import discriminator_loss, kl_loss, feature_loss, generator_loss
 from mel_processing import spec_to_mel_torch, mel_spectrogram_torch
-from evaluate import evaluate
 
 
 def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
