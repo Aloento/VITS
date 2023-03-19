@@ -23,9 +23,6 @@ from train_and_evaluate import train_and_evaluate
 
 # PyTorch使用CUDNN加速库
 cudnn.benchmark = True
-# 跟踪训练步数
-global_step = 0
-
 
 def main(args):
   # 检查CUDA是否可用，如果不可用，则抛出异常
@@ -59,9 +56,6 @@ def run(rank, num_gpus, hps, args):
   :param num_gpus: 可用的 GPU 数量
   :param hps: 配置
   """
-
-  # 记录模型训练的步数
-  global global_step
 
   if rank == 0:
     # 日志记录器
@@ -121,9 +115,8 @@ def run(rank, num_gpus, hps, args):
     train_dataset,
     num_workers=8,
     shuffle=False,
-    pin_memory=False,
+    pin_memory=True,
     collate_fn=collate_fn,
-    persistent_workers=True,
     batch_sampler=train_sampler,
   )
 
@@ -133,7 +126,7 @@ def run(rank, num_gpus, hps, args):
     eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps.data, args.initial_run)
     eval_loader = DataLoader(
       eval_dataset,
-      num_workers=8,
+      num_workers=4,
       shuffle=False,
       batch_size=hps.train.batch_size,
       pin_memory=True,
@@ -189,10 +182,10 @@ def run(rank, num_gpus, hps, args):
     )
 
     epoch_str = epoch_save + 1
-    global_step = epoch_save * len(train_loader) + 1
+    utils.global_step = epoch_save * len(train_loader) + 1
   except:
     epoch_str = 1
-    global_step = 0
+    utils.global_step = 0
 
   scheduler_g = torch.optim.lr_scheduler.ExponentialLR(
     optim_g, gamma=hps.train.lr_decay, last_epoch=epoch_str - 2

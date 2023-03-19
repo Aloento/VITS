@@ -2,13 +2,13 @@ import math
 import os
 
 import torch
-from phaseaug.phaseaug import PhaseAug
 from torch.cuda.amp import autocast
 from torch.nn import functional as F
 from tqdm import tqdm
 
 import commons
 import utils
+from PhaseAug import PhaseAug
 from evaluate import evaluate
 from losses import discriminator_loss, kl_loss, feature_loss, generator_loss
 from mel_processing import spec_to_mel_torch, mel_spectrogram_torch
@@ -22,8 +22,6 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
   train_loader.batch_sampler.set_epoch(epoch)
 
   aug = PhaseAug().cuda(rank)
-
-  global global_step
 
   net_g.train()
   net_d.train()
@@ -164,7 +162,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
           epoch, loss_gen_all, loss_disc_all)
       )
 
-      if global_step % hps.train.log_interval == 0:
+      if utils.global_step % hps.train.log_interval == 0:
         lr = optim_g.param_groups[0]['lr']
 
         scalar_dict = {
@@ -184,20 +182,20 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
 
         utils.summarize(
           writer=writer,
-          global_step=global_step,
+          global_step=utils.global_step,
           scalars=scalar_dict
         )
 
-        print([global_step, loss_gen_all.item(), loss_disc_all.item(), lr])
+        print([utils.global_step, loss_gen_all.item(), loss_disc_all.item(), lr])
 
-      if global_step % hps.train.eval_interval == 0:
-        evaluate(hps, global_step, net_g, eval_loader, writer)
+      if utils.global_step % hps.train.eval_interval == 0:
+        evaluate(hps, utils.global_step, net_g, eval_loader, writer)
 
-      if global_step % hps.train.save_interval == 0:
+      if utils.global_step % hps.train.save_interval == 0:
         utils.save_checkpoint(
           net_g, optim_g, net_d, optim_d,
           hps, epoch,
-          global_step
+          utils.global_step
         )
 
         try:
@@ -206,7 +204,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
           if keep_ckpts > 0:
             rm_path = os.path.join(
               hps.model_dir,
-              "{}_{}.pth".format(hps.model_name, global_step - hps.train.save_interval * keep_ckpts)
+              "{}_{}.pth".format(hps.model_name, utils.global_step - hps.train.save_interval * keep_ckpts)
             )
 
             os.remove(rm_path)
@@ -216,4 +214,4 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
         except:
           pass
 
-    global_step += 1
+    utils.global_step += 1

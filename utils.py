@@ -10,6 +10,8 @@ from omegaconf import OmegaConf
 from scipy.io.wavfile import read
 
 MATPLOTLIB_FLAG = False
+# 跟踪训练步数
+global_step = 0
 
 logging.basicConfig(
   stream=sys.stdout,

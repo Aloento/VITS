@@ -93,6 +93,7 @@ class PhaseAug(nn.Module):
       window=self.window,
       return_complex=False
     )  # [2B,F,T,2]
+
     if phi is None:
       phi = self.sample_phi(self, X.shape[0] // 2)
     phi = torch.cat([phi, phi], dim=0)
@@ -103,12 +104,17 @@ class PhaseAug(nn.Module):
     phi_sin = phi.sin()
     rot_mat = torch.cat(
       [phi_cos, -phi_sin, phi_sin, phi_cos],  # [2B,F,2,2]
-      dim=-1).view(-1, self.nfft // 2 + 1, 2, 2)
+      dim=-1
+    ).view(-1, self.nfft // 2 + 1, 2, 2)
+
     # We did not mention that we multiplied rot_mat to "the left side of X"
     # Paper will be modified at rebuttal phase for clarity.
     X_aug = torch.einsum('bfij ,bftj->bfti', rot_mat, X)
+    X_aug_contiguous = X_aug.contiguous()
+    X_aug_complex = torch.view_as_complex(X_aug_contiguous)
+
     x_aug = torch.istft(
-      X_aug,
+      X_aug_complex,
       self.nfft,
       self.hop,
       window=self.window,
