@@ -37,6 +37,7 @@ def main(args):
   create_spec(hps.data.training_files, hps.data)
   create_spec(hps.data.validation_files, hps.data)
 
+  os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:32"
   # 用于在多个GPU之间进行通信
   os.environ['MASTER_ADDR'] = 'localhost'
   os.environ['MASTER_PORT'] = '8000'
