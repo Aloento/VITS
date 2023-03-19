@@ -20,42 +20,55 @@ logger = logging
 
 
 def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g=None, optim_d=None):
-  assert os.path.isfile(checkpoint_path)
+  is_train = os.path.isdir(checkpoint_path)
 
-  checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
-  iteration = checkpoint_dict['iteration']
-  learning_rate = checkpoint_dict['learning_rate']
-  config = checkpoint_dict['config']
+  if is_train:
+    train = latest_checkpoint_path(checkpoint_path, "*_Train_*.pth")
+    val = latest_checkpoint_path(checkpoint_path, "*_Eval_*.pth")
 
-  if model_g is not None:
-    model_g, optim_g = load_model(
-      model_g,
-      checkpoint_dict['model_g'],
-      optim_g,
-      checkpoint_dict['optimizer_g'])
+    assert train is not None
+    assert val is not None
 
-  if model_d is not None:
-    model_d, optim_d = load_model(
-      model_d,
-      checkpoint_dict['model_d'],
-      optim_d,
-      checkpoint_dict['optimizer_d'])
+    train_dict = torch.load(train, map_location='cpu')
+    iteration = train_dict['iteration']
+  else:
+    assert os.path.isfile(checkpoint_path)
+    val = checkpoint_path
+
+  val_dict = torch.load(val, map_location='cpu')
+  config = val_dict['config']
+
+  assert model_g is not None
+  model_g = load_model(
+    model_g,
+    val_dict['model_g']
+  )
+
+  if is_train:
+    if optim_g is not None:
+      optim_g.load_state_dict(train_dict['optimizer_g'])
+
+    if model_d is not None:
+      model_d = load_model(
+        model_d,
+        train_dict['model_d']
+      )
+
+    if optim_d is not None:
+      optim_d.load_state_dict(train_dict['optimizer_d'])
 
   if rank == 0:
     logger.info(
       "Loaded checkpoint '{}' (iteration {})".format(
         checkpoint_path,
-        iteration
+        iteration if is_train else "Eval"
       )
     )
 
-  return model_g, model_d, optim_g, optim_d, learning_rate, iteration, config
+  return model_g, model_d, optim_g, optim_d, iteration, config
 
 
-def load_model(model, model_state_dict, optim, optim_state_dict):
-  if optim is not None:
-    optim.load_state_dict(optim_state_dict)
-
+def load_model(model, model_state_dict):
   if hasattr(model, 'module'):
     state_dict = model.module.state_dict()
   else:
@@ -70,10 +83,10 @@ def load_model(model, model_state_dict, optim, optim_state_dict):
   else:
     model.load_state_dict(state_dict)
 
-  return model, optim
+  return model
 
 
-def save_checkpoint(net_g, optim_g, net_d, optim_d, hps, epoch, learning_rate, save_path):
+def save_checkpoint(net_g, optim_g, net_d, optim_d, hps, epoch, global_step):
   def get_state_dict(model):
     if hasattr(model, 'module'):
       state_dict = model.module.state_dict()
@@ -81,15 +94,25 @@ def save_checkpoint(net_g, optim_g, net_d, optim_d, hps, epoch, learning_rate, s
       state_dict = model.state_dict()
     return state_dict
 
-  torch.save({
-    'model_g': get_state_dict(net_g),
-    'model_d': get_state_dict(net_d),
-    'optimizer_g': optim_g.state_dict(),
-    'optimizer_d': optim_d.state_dict(),
-    'config': str(hps),
-    'iteration': epoch,
-    'learning_rate': learning_rate
-  }, save_path)
+  torch.save(
+    {
+      'model_d': get_state_dict(net_d),
+      'optimizer_g': optim_g.state_dict(),
+      'optimizer_d': optim_d.state_dict(),
+      'iteration': epoch,
+    }, os.path.join(
+      hps.model_dir, "{}_Train_{}.pth".format(hps.model_name, global_step)
+    )
+  )
+
+  torch.save(
+    {
+      'model_g': get_state_dict(net_g),
+      'config': str(hps),
+    }, os.path.join(
+      hps.model_dir, "{}_Eval_{}.pth".format(hps.model_name, global_step)
+    )
+  )
 
 
 def summarize(writer, global_step, scalars={}, histograms={}, images={}, audios={}, audio_sampling_rate=22050):
@@ -133,40 +156,6 @@ def plot_spectrogram_to_numpy(spectrogram):
   plt.colorbar(im, ax=ax)
   plt.xlabel("Frames")
   plt.ylabel("Channels")
-  plt.tight_layout()
-
-  fig.canvas.draw()
-  data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-  data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-  plt.close()
-
-  return data
-
-
-def plot_alignment_to_numpy(alignment, info=None):
-  global MATPLOTLIB_FLAG
-
-  if not MATPLOTLIB_FLAG:
-    import matplotlib
-    matplotlib.use("Agg")
-    MATPLOTLIB_FLAG = True
-    mpl_logger = logging.getLogger('matplotlib')
-    mpl_logger.setLevel(logging.WARNING)
-
-  import matplotlib.pylab as plt
-  import numpy as np
-
-  fig, ax = plt.subplots(figsize=(6, 4))
-  im = ax.imshow(alignment.transpose(), aspect='auto', origin='lower', interpolation='none')
-
-  fig.colorbar(im, ax=ax)
-  xlabel = 'Decoder timestep'
-
-  if info is not None:
-    xlabel += '\n\n' + info
-
-  plt.xlabel(xlabel)
-  plt.ylabel('Encoder timestep')
   plt.tight_layout()
 
   fig.canvas.draw()

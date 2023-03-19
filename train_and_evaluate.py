@@ -193,9 +193,9 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
 
       if global_step % hps.train.save_interval == 0:
         utils.save_checkpoint(
-          net_g, optim_g, net_d, optim_d, hps, epoch,
-          hps.train.learning_rate,
-          os.path.join(hps.model_dir, "{}_{}.pth".format(hps.model_name, global_step))
+          net_g, optim_g, net_d, optim_d,
+          hps, epoch,
+          global_step
         )
 
         try:

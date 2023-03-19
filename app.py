@@ -28,6 +28,7 @@ class GradioApp:
   def __init__(self, args):
     self.hps = utils.get_hparams_from_file(args.config)
     self.device = "cpu"
+
     self.net_g = SynthesizerTrn(
       len(symbols),
       self.hps.data.filter_length // 2 + 1,
@@ -39,6 +40,7 @@ class GradioApp:
       n_speakers=len(self.hps.data.speakers),
       **self.hps.model
     ).to(self.device)
+
     _ = self.net_g.eval()
     _ = utils.load_checkpoint(args.checkpoint_path, model_g=self.net_g)
     self.interface = self._gradio_interface()
