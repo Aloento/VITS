@@ -19,8 +19,8 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
   3) computes spectrogram's from audio files. 从音频文件计算出其对应的声谱图
   """
 
-  def __init__(self, audiopaths_sid_text, hparams, pt_run=False):
-    self.audiopaths_sid_text = load_filepaths_and_text(audiopaths_sid_text)
+  def __init__(self, wav_paths_sid_text, hparams, pt_run=False):
+    self.wav_paths_sid_text = load_filepaths_and_text(wav_paths_sid_text)
     self.sampling_rate = hparams.sampling_rate
     self.filter_length = hparams.filter_length
     self.hop_length = hparams.hop_length
@@ -47,14 +47,14 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
 
     random.seed(114514)
     # 随机打乱
-    random.shuffle(self.audiopaths_sid_text)
+    random.shuffle(self.wav_paths_sid_text)
     # 将不符合文本长度要求的音频和文本对剔除
     self._filter()
 
     if pt_run:
-      for _audiopaths_sid_text in self.audiopaths_sid_text:
+      for _wav_paths_sid_text in self.wav_paths_sid_text:
         _ = self.get_audio_text_speaker_pair(
-          _audiopaths_sid_text, True
+          _wav_paths_sid_text, True
         )
 
   def _filter(self):
@@ -66,11 +66,11 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
     # wav_length ~= file_size / (wav_channels * Bytes per dim) = file_size / (1 * 2)
     # spec_length = wav_length // hop_length
 
-    audiopaths_sid_text_new = []
+    wav_paths_sid_text_new = []
     lengths = []
 
     # 遍历输入数据中的每个音频文件和对应的文本信息
-    for audiopath, spk, text, lang in self.audiopaths_sid_text:
+    for audiopath, spk, text, lang in self.wav_paths_sid_text:
       # 判断文本长度是否在给定范围内
       if self.min_text_len <= len(text) <= self.max_text_len:
         audiopath = os.path.join(self.data_path, audiopath)
@@ -85,18 +85,18 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
           continue
 
         # 将这个音频和文本对加入一个新的列表，并计算该音频对应的长度（单位是以采样点数为基础的帧数）
-        audiopaths_sid_text_new.append([audiopath, spk, text, lang])
+        wav_paths_sid_text_new.append([audiopath, spk, text, lang])
         lengths.append(os.path.getsize(audiopath) // (2 * self.hop_length))
 
-    self.audiopaths_sid_text = audiopaths_sid_text_new
+    self.wav_paths_sid_text = wav_paths_sid_text_new
     self.lengths = lengths
 
-  def get_audio_text_speaker_pair(self, audiopath_sid_text, pt_run=False):
+  def get_audio_text_speaker_pair(self, wav_path_sid_text, pt_run=False):
     # separate filename, speaker_id and text
-    audiopath, spk, text, lang = audiopath_sid_text
+    wav_path, spk, text, lang = wav_path_sid_text
     text, lang = self.get_text(text, lang)
 
-    spec, ying, wav = self.get_audio(audiopath, pt_run)
+    spec, ying, wav = self.get_audio(wav_path, pt_run)
     sid = self.get_sid(self.speaker_dict[spk])
 
     return text, spec, ying, wav, sid, lang
@@ -171,10 +171,10 @@ class TextAudioSpeakerLoader(torch.utils.data.Dataset):
     return sid
 
   def __getitem__(self, index):
-    return self.get_audio_text_speaker_pair(self.audiopaths_sid_text[index])
+    return self.get_audio_text_speaker_pair(self.wav_paths_sid_text[index])
 
   def __len__(self):
-    return len(self.audiopaths_sid_text)
+    return len(self.wav_paths_sid_text)
 
 
 class TextAudioSpeakerCollate:

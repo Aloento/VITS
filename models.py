@@ -1472,6 +1472,7 @@ class SynthesizerTrn(nn.Module):
       attn = maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
     w = attn.sum(2)
+    # 时长预测
     # 根据注意力分布计算权重向量，以调整 x 序列的持续时间。
     # 如果使用 Soft DTW，则计算一个序列的持续时间，
     # 否则计算一个标量损失，用于评估所生成语音的质量。
