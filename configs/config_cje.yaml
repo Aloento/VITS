@@ -33,7 +33,7 @@ data:
   mel_fmin: 0.0
   mel_fmax: null
   add_blank: True
-  speakers: [ "0", "1", "2", "3", "4" ]
+  speakers: [ "0" ]
   persistent_workers: True
   midi_start: -5
   midi_end: 75
