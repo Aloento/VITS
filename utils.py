@@ -36,6 +36,7 @@ def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g
   else:
     assert os.path.isfile(checkpoint_path)
     val = checkpoint_path
+    iteration = "Eval"
 
   val_dict = torch.load(val, map_location='cpu')
   config = val_dict['config']
@@ -63,7 +64,7 @@ def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g
     logger.info(
       "Loaded checkpoint '{}' (iteration {})".format(
         checkpoint_path,
-        iteration if is_train else "Eval"
+        iteration
       )
     )
 

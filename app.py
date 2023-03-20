@@ -48,10 +48,13 @@ class GradioApp:
   def get_phoneme(self, text):
     cleaned_text, lang = clean_text(text)
     text_norm = cleaned_text_to_sequence(cleaned_text)
+
     if self.hps.data.add_blank:
       text_norm, lang = commons.intersperse_with_language_id(text_norm, lang, 0)
+
     text_norm = torch.LongTensor(text_norm)
     lang = torch.LongTensor(lang)
+
     return text_norm, lang, cleaned_text
 
   def inference(self, text, speaker_id_val, seed, scope_shift, duration):
@@ -72,10 +75,13 @@ class GradioApp:
       noise_scale=0.667,
       noise_scale_w=0.8,
       length_scale=duration,
-      scope_shift=scope_shift)
+      scope_shift=scope_shift
+    )
 
     audio = self.net_g.infer_decode_chunk(
-      decoder_inputs, sid=speaker_id)[0, 0].data.cpu().float().numpy()
+      decoder_inputs, sid=speaker_id
+    )[0, 0].data.cpu().float().numpy()
+
     del decoder_inputs,
 
     return phones, (self.hps.data.sampling_rate, audio)
@@ -84,17 +90,26 @@ class GradioApp:
     title = "PITS Demo"
 
     self.inputs = [
-      gr.Textbox(label="Text (150 words limitation)",
-                 value="[JA]こんにちは、私は綾地寧々です。[JA]",
-                 elem_id="tts-input"),
-      gr.Dropdown(list(self.hps.data.speakers),
-                  value=self.hps.data.speakers[0],
-                  label="Speaker Identity",
-                  type="index"),
-      gr.Slider(0, 65536, value=0, step=1, label="random seed"),
-      gr.Slider(-15, 15, value=0, step=1, label="scope-shift"),
-      gr.Slider(0.5, 2., value=1., step=0.1,
-                label="duration multiplier"),
+      gr.Textbox(
+        label="Text (150 words limitation)",
+        value="[JA]こんにちは、私は綾地寧々です。[JA]",
+        elem_id="tts-input"
+      ),
+      gr.Dropdown(
+        list(self.hps.data.speakers),
+        value=self.hps.data.speakers[0],
+        label="Speaker Identity",
+        type="index"
+      ),
+      gr.Slider(
+        0, 65536, value=0, step=1, label="random seed"
+      ),
+      gr.Slider(
+        -15, 15, value=0, step=1, label="scope-shift"
+      ),
+      gr.Slider(
+        0.5, 2., value=1., step=0.1, label="duration multiplier"
+      ),
     ]
 
     self.outputs = [
@@ -102,9 +117,9 @@ class GradioApp:
       gr.Audio(type="numpy", label="Output audio")
     ]
 
-    description = "Welcome to the Gradio demo for PITS: Variational Pitch Inference without Fundamental Frequency for End-to-End Pitch-controllable TTS.\n In this demo, we utilize an open-source G2P library (g2p_en) with stress removing, instead of our internal G2P.\n You can fix the latent z by controlling random seed.\n You can shift the pitch scope, but please note that this is opposite to pitch-shift. In addition, it is cropped from fixed z so please check pitch-controllability by comparing with normal synthesis.\n Thank you for trying out our PITS demo!"
-    article = "Github:https://github.com/anonymous-pits/pits \n Our current preprint contains several errors. Please wait for next update."
-    examples = [["[JA]こんにちは、私は綾地寧々です。[JA]"], ["[JA]This is a demo page of the PITS.[JA]"]]
+    description = "Welcome to the Gradio demo for PITS."
+    article = "Github: https://github.com/Aloento/VariTTS"
+    examples = [["[JA]こんにちは、私は綾地寧々です。[JA]"]]
 
     return gr.Interface(
       fn=self.inference,
@@ -134,14 +149,14 @@ def parsearg():
     '-m',
     '--model',
     type=str,
-    default='PITS',
+    default='9Nine',
     help='Model name'
   )
   parser.add_argument(
     '-r',
     '--checkpoint_path',
     type=str,
-    default='./logs/cjke/cjke_36800.pth',
+    default='./logs/9Nine/9Nine_Eval_10600.pth',
     help='Path to checkpoint for resume'
   )
   parser.add_argument(
