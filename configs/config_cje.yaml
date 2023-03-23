@@ -33,7 +33,7 @@ data:
   mel_fmin: 0.0
   mel_fmax: null
   add_blank: True
-  speakers: [ "九条都", "新海天", "结城希亚", "幽灵", "索菲" ]
+  speakers: [ "MY", "SR", "NA", "GT", "SF" ]
   persistent_workers: True
   midi_start: -5
   midi_end: 75
