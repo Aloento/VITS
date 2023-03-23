@@ -91,7 +91,7 @@ class TextEncoder(nn.Module):
     x = torch.einsum('btd,but->bdt', x, x_mask)  # [b, h, t]
 
     # 对序列进行多头自注意力编码，进行特征提取（残差连接）
-    x = self.encoder(x * x_mask, x_mask)
+    x = self.encoder(x, x_mask)
 
     # 将编码后的序列 x 通过 self.proj 进行投影，特征变换
     # 将 x 的最后一个维度从 hidden_channels 转换为 out_channels * 2
