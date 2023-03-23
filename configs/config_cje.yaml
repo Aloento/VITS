@@ -2,12 +2,12 @@ train:
   log_interval: 50   # step unit
   eval_interval: 400  # step unit
   save_interval: 200  # epoch unit: 50 for baseline / 500 for fine-tuning
-  seed: 114514
-  epochs: 7000
+  seed: 1919810
+  epochs: 1800
   learning_rate: 2e-4
   betas: [ 0.8, 0.99 ]
   eps: 1e-9
-  batch_size: 8
+  batch_size: 64
   fp16_run: True  #False
   lr_decay: 0.999875
   segment_size: 8192
@@ -33,7 +33,7 @@ data:
   mel_fmin: 0.0
   mel_fmax: null
   add_blank: True
-  speakers: [ "0" ]
+  speakers: [ "九条都", "新海天", "结城希亚", "幽灵", "索菲" ]
   persistent_workers: True
   midi_start: -5
   midi_end: 75
