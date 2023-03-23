@@ -39,7 +39,6 @@ def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g
     iteration = "Eval"
 
   val_dict = torch.load(val, map_location='cpu')
-  config = val_dict['config']
 
   assert model_g is not None
   model_g = load_model(
@@ -68,7 +67,7 @@ def load_checkpoint(checkpoint_path, rank=0, model_g=None, model_d=None, optim_g
       )
     )
 
-  return model_g, model_d, optim_g, optim_d, iteration, config
+  return model_g, model_d, optim_g, optim_d, iteration
 
 
 def load_model(model, model_state_dict):
@@ -111,7 +110,6 @@ def save_checkpoint(net_g, optim_g, net_d, optim_d, hps, epoch, global_step):
   torch.save(
     {
       'model_g': get_state_dict(net_g),
-      'config': str(hps),
     }, os.path.join(
       hps.model_dir, "{}_Eval_{}.pth".format(hps.model_name, global_step)
     )

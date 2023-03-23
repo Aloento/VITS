@@ -176,7 +176,7 @@ def run(rank, num_gpus, hps, args):
   net_d = DDP(net_d, device_ids=[rank])
 
   try:
-    _, _, _, _, epoch_save, _ = utils.load_checkpoint(
+    _, _, _, _, epoch_save = utils.load_checkpoint(
       hps.model_dir,
       rank, net_g, net_d, optim_g, optim_d
     )
