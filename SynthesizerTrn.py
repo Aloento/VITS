@@ -6,7 +6,6 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 import commons
-from DurationPredictor import DurationPredictor
 from HiFiGANGenerator import HiFiGANGenerator
 from Pitch import Pitch
 from PosteriorEncoder import PosteriorEncoder
@@ -49,7 +48,6 @@ class SynthesizerTrn(nn.Module):
       yin_shift_range,
       n_speakers=0,
       gin_channels=0,
-      use_sdp=True,
       **kwargs
   ):
     """
@@ -71,7 +69,6 @@ class SynthesizerTrn(nn.Module):
     :param upsample_kernel_sizes: 每个转置卷积的内核大小的列表
     :param n_speakers: 说话人的数量（对于单说话人语音合成为0）
     :param gin_channels: 全局条件嵌入的大小
-    :param use_sdp: 是否使用随机持续时间预测器
     :param kwargs: 任意数量的关键字参数
     """
 
@@ -94,7 +91,6 @@ class SynthesizerTrn(nn.Module):
     self.segment_size = segment_size
     self.n_speakers = n_speakers
     self.gin_channels = gin_channels
-    self.use_sdp = use_sdp
 
     self.yin_channels = yin_channels
     self.yin_start = yin_start
@@ -146,14 +142,9 @@ class SynthesizerTrn(nn.Module):
       gin_channels=gin_channels
     )
 
-    if use_sdp:
-      self.duration_predictor = StochasticDurationPredictor(
-        hidden_channels, 192, 3, 0.5, 4, gin_channels=gin_channels
-      )
-    else:
-      self.duration_predictor = DurationPredictor(  # type: ignore
-        hidden_channels, 256, 3, 0.5, gin_channels=gin_channels
-      )
+    self.duration_predictor = StochasticDurationPredictor(
+      hidden_channels, 192, 3, 0.5, 4, gin_channels=gin_channels
+    )
 
     self.yin_decoder = YingDecoder(
       yin_scope,
@@ -248,13 +239,8 @@ class SynthesizerTrn(nn.Module):
     # 根据注意力分布计算权重向量，以调整 x 序列的持续时间。
     # 如果使用 Soft DTW，则计算一个序列的持续时间，
     # 否则计算一个标量损失，用于评估所生成语音的质量。
-    if self.use_sdp:
-      l_length = self.duration_predictor(x, x_mask, w, g=g)
-      l_length = l_length / torch.sum(x_mask)
-    else:
-      logw_ = torch.log(w + 1e-6) * x_mask
-      logw = self.duration_predictor(x, x_mask, g=g)
-      l_length = torch.sum((logw - logw_) ** 2, [1, 2]) / torch.sum(x_mask)  # for averaging
+    l_length = self.duration_predictor(x, x_mask, w, g=g)
+    l_length = l_length / torch.sum(x_mask)
 
     # expand prior
     # 使用注意力分布对先验分布的均值和方差进行加权，以获得特定时间步的平均均值和方差，从而用于音频生成
@@ -309,10 +295,7 @@ class SynthesizerTrn(nn.Module):
     else:
       g = None
 
-    if self.use_sdp:
-      logw = self.duration_predictor(x, x_mask, g=g, reverse=True, noise_scale=noise_scale_w)
-    else:
-      logw = self.duration_predictor(x, x_mask, g=g)
+    logw = self.duration_predictor(x, x_mask, g=g, reverse=True, noise_scale=noise_scale_w)
 
     w = torch.exp(logw) * x_mask * length_scale
     w_ceil = torch.ceil(w)
@@ -358,16 +341,13 @@ class SynthesizerTrn(nn.Module):
     else:
       g = None
 
-    if self.use_sdp:
-      logw = self.duration_predictor(
-        x,
-        x_mask,
-        g=g,
-        reverse=True,
-        noise_scale=noise_scale_w
-      )
-    else:
-      logw = self.duration_predictor(x, x_mask, g=g)
+    logw = self.duration_predictor(
+      x,
+      x_mask,
+      g=g,
+      reverse=True,
+      noise_scale=noise_scale_w
+    )
 
     w = torch.exp(logw) * x_mask * length_scale
     w_ceil = torch.ceil(w)
@@ -408,16 +388,13 @@ class SynthesizerTrn(nn.Module):
     else:
       g = None
 
-    if self.use_sdp:
-      logw = self.duration_predictor(
-        x,
-        x_mask,
-        g=g,
-        reverse=True,
-        noise_scale=noise_scale_w
-      )
-    else:
-      logw = self.duration_predictor(x, x_mask, g=g)
+    logw = self.duration_predictor(
+      x,
+      x_mask,
+      g=g,
+      reverse=True,
+      noise_scale=noise_scale_w
+    )
 
     w = torch.exp(logw) * x_mask * length_scale
     w_ceil = torch.ceil(w)
