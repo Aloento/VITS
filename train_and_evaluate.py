@@ -186,7 +186,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
           scalars=scalar_dict
         )
 
-        print([utils.global_step, loss_gen_all.item(), loss_disc_all.item(), lr])
+        print("\n", [utils.global_step, loss_gen_all.item(), loss_disc_all.item(), lr], "\n")
 
       if utils.global_step % hps.train.eval_interval == 0:
         evaluate(hps, utils.global_step, net_g, eval_loader, writer)
@@ -197,21 +197,5 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, scaler, loaders, writer):
           hps, epoch,
           utils.global_step
         )
-
-        try:
-          keep_ckpts = getattr(hps.train, 'keep_ckpts', 0)
-
-          if keep_ckpts > 0:
-            rm_path = os.path.join(
-              hps.model_dir,
-              "{}_{}.pth".format(hps.model_name, utils.global_step - hps.train.save_interval * keep_ckpts)
-            )
-
-            os.remove(rm_path)
-            print()
-            print("remove ", rm_path)
-
-        except:
-          pass
 
     utils.global_step += 1

@@ -92,12 +92,13 @@ class GradioApp:
     self.inputs = [
       gr.Textbox(
         label="Text (150 words limitation)",
-        value="[JA]こんにちは、私は綾地寧々です。[JA]",
+        value="[JA]そんなわけないじゃない。どうしてこうなるだろう。始めて好きな人ができた。一生ものの友达ができた。嬉しいことが二つ重なて。"
+              "その二つの嬉しさがまたたくさんの嬉しさをつれて来てくれて。梦のように幸せの时间を手に入れたはずなのに。なのにどうして、こうなちょうだろう。[JA]",
         elem_id="tts-input"
       ),
       gr.Dropdown(
         list(self.hps.data.speakers),
-        value=self.hps.data.speakers[0],
+        value=self.hps.data.speakers[1],
         label="Speaker Identity",
         type="index"
       ),
